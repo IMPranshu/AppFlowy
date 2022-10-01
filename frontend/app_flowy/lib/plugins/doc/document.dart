@@ -1,10 +1,10 @@
 library document_plugin;
 
 import 'package:app_flowy/generated/locale_keys.g.dart';
+import 'package:app_flowy/plugins/util.dart';
 import 'package:app_flowy/startup/plugin/plugin.dart';
 import 'package:app_flowy/startup/startup.dart';
 import 'package:app_flowy/workspace/application/appearance.dart';
-import 'package:app_flowy/workspace/application/view/view_listener.dart';
 import 'package:app_flowy/plugins/doc/application/share_bloc.dart';
 import 'package:app_flowy/workspace/presentation/home/home_stack.dart';
 import 'package:app_flowy/workspace/presentation/home/toast.dart';
@@ -14,7 +14,6 @@ import 'package:app_flowy/workspace/presentation/widgets/pop_up_action.dart';
 import 'package:clipboard/clipboard.dart';
 import 'package:dartz/dartz.dart' as dartz;
 import 'package:easy_localization/easy_localization.dart';
-import 'package:flowy_infra/notifier.dart';
 import 'package:flowy_infra/size.dart';
 import 'package:flowy_infra_ui/flowy_infra_ui.dart';
 import 'package:flowy_infra_ui/widget/rounded_button.dart';
@@ -48,63 +47,62 @@ class DocumentPluginBuilder extends PluginBuilder {
   ViewDataTypePB get dataType => ViewDataTypePB.Text;
 }
 
-class DocumentPlugin implements Plugin {
-  late ViewPB _view;
-  ViewListener? _listener;
+class DocumentPlugin extends Plugin<int> {
   late PluginType _pluginType;
 
-  DocumentPlugin(
-      {required PluginType pluginType, required ViewPB view, Key? key})
-      : _view = view {
+  @override
+  final ViewPluginNotifier notifier;
+
+  DocumentPlugin({
+    required PluginType pluginType,
+    required ViewPB view,
+    Key? key,
+  }) : notifier = ViewPluginNotifier(view: view) {
     _pluginType = pluginType;
-    _listener = getIt<ViewListener>(param1: view);
-    _listener?.start(onViewUpdated: (result) {
-      result.fold(
-        (newView) {
-          _view = newView;
-          display.notifier!.value = _view.hashCode;
-        },
-        (error) {},
-      );
-    });
   }
 
   @override
-  void dispose() {
-    _listener?.stop();
-    _listener = null;
-  }
-
-  @override
-  PluginDisplay<int> get display => DocumentPluginDisplay(view: _view);
+  PluginDisplay get display => DocumentPluginDisplay(notifier: notifier);
 
   @override
   PluginType get ty => _pluginType;
 
   @override
-  PluginId get id => _view.id;
+  PluginId get id => notifier.view.id;
 }
 
-class DocumentPluginDisplay extends PluginDisplay<int> with NavigationItem {
-  final PublishNotifier<int> _displayNotifier = PublishNotifier<int>();
-  final ViewPB _view;
+class DocumentPluginDisplay extends PluginDisplay with NavigationItem {
+  final ViewPluginNotifier notifier;
+  ViewPB get view => notifier.view;
+  int? deletedViewIndex;
 
-  DocumentPluginDisplay({required ViewPB view, Key? key}) : _view = view;
-
-  @override
-  Widget buildWidget() => DocumentPage(view: _view, key: ValueKey(_view.id));
+  DocumentPluginDisplay({required this.notifier, Key? key});
 
   @override
-  Widget get leftBarItem => ViewLeftBarItem(view: _view);
+  Widget buildWidget(PluginContext context) {
+    notifier.isDeleted.addListener(() {
+      notifier.isDeleted.value.fold(() => null, (deletedView) {
+        if (deletedView.hasIndex()) {
+          deletedViewIndex = deletedView.index;
+        }
+      });
+    });
+
+    return DocumentPage(
+      view: view,
+      onDeleted: () => context.onDeleted(view, deletedViewIndex),
+      key: ValueKey(view.id),
+    );
+  }
 
   @override
-  Widget? get rightBarItem => DocumentShareButton(view: _view);
+  Widget get leftBarItem => ViewLeftBarItem(view: view);
+
+  @override
+  Widget? get rightBarItem => DocumentShareButton(view: view);
 
   @override
   List<NavigationItem> get navigationItems => [this];
-
-  @override
-  PublishNotifier<int>? get notifier => _displayNotifier;
 }
 
 class DocumentShareButton extends StatelessWidget {
@@ -133,8 +131,8 @@ class DocumentShareButton extends StatelessWidget {
         child: BlocBuilder<DocShareBloc, DocShareState>(
           builder: (context, state) {
             return ChangeNotifierProvider.value(
-              value: Provider.of<AppearanceSettingModel>(context, listen: true),
-              child: Selector<AppearanceSettingModel, Locale>(
+              value: Provider.of<AppearanceSetting>(context, listen: true),
+              child: Selector<AppearanceSetting, Locale>(
                 selector: (ctx, notifier) => notifier.locale,
                 builder: (ctx, _, child) => ConstrainedBox(
                   constraints: const BoxConstraints.expand(
@@ -186,7 +184,8 @@ class DocumentShareButton extends StatelessWidget {
                 'Exported to: ${LocaleKeys.notifications_export_path.tr()}');
             break;
           case ShareAction.copyLink:
-            FlowyAlertDialog(title: LocaleKeys.shareAction_workInProgress.tr())
+            NavigatorAlertDialog(
+                    title: LocaleKeys.shareAction_workInProgress.tr())
                 .show(context);
             break;
         }
@@ -206,9 +205,6 @@ class ShareActions with ActionList<ShareActionWrapper>, FlowyOverlayDelegate {
       ShareAction.values.map((action) => ShareActionWrapper(action)).toList();
 
   ShareActions({required this.onSelected});
-
-  @override
-  double get maxWidth => 130;
 
   @override
   double get itemHeight => 22;
@@ -245,7 +241,7 @@ class ShareActionWrapper extends ActionItem {
   ShareActionWrapper(this.inner);
 
   @override
-  Widget? get icon => null;
+  Widget? icon(Color iconColor) => null;
 
   @override
   String get name => inner.name;

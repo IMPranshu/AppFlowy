@@ -1,7 +1,9 @@
 import 'package:app_flowy/startup/startup.dart';
 import 'package:app_flowy/plugins/grid/application/prelude.dart';
+import 'package:appflowy_popover/appflowy_popover.dart';
 
 import 'package:flowy_infra/theme.dart';
+import 'package:flowy_infra_ui/flowy_infra_ui.dart';
 import 'package:flowy_infra_ui/style_widget/text.dart';
 // ignore: unused_import
 import 'package:flowy_sdk/log.dart';
@@ -133,7 +135,7 @@ class _MultiSelectCellState extends State<GridMultiSelectCell> {
   }
 }
 
-class SelectOptionWrap extends StatelessWidget {
+class SelectOptionWrap extends StatefulWidget {
   final List<SelectOptionPB> selectOptions;
   final void Function(bool)? onFocus;
   final SelectOptionCellStyle? cellStyle;
@@ -147,48 +149,80 @@ class SelectOptionWrap extends StatelessWidget {
   }) : super(key: key);
 
   @override
+  State<StatefulWidget> createState() => _SelectOptionWrapState();
+}
+
+class _SelectOptionWrapState extends State<SelectOptionWrap> {
+  late PopoverController _popover;
+
+  @override
+  void initState() {
+    _popover = PopoverController();
+    super.initState();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final theme = context.watch<AppTheme>();
-    final Widget child;
-    if (selectOptions.isEmpty && cellStyle != null) {
-      child = Align(
-        alignment: Alignment.centerLeft,
-        child: FlowyText.medium(
-          cellStyle!.placeholder,
-          fontSize: 14,
-          color: theme.shader3,
-        ),
-      );
-    } else {
-      child = Align(
-        alignment: Alignment.centerLeft,
-        child: Wrap(
-          children: selectOptions
-              .map((option) => SelectOptionTag.fromOption(
-                    context: context,
-                    option: option,
-                  ))
-              .toList(),
-          spacing: 4,
-          runSpacing: 2,
-        ),
-      );
-    }
+    Widget child = _buildOptions(theme, context);
 
     return Stack(
       alignment: AlignmentDirectional.center,
       fit: StackFit.expand,
       children: [
-        child,
-        InkWell(onTap: () {
-          onFocus?.call(true);
-          SelectOptionCellEditor.show(
-            context,
-            cellControllerBuilder.build() as GridSelectOptionCellController,
-            () => onFocus?.call(false),
-          );
-        }),
+        _wrapPopover(child),
+        InkWell(onTap: () => _popover.show()),
       ],
     );
+  }
+
+  Widget _wrapPopover(Widget child) {
+    final constraints = BoxConstraints.loose(Size(
+      SelectOptionCellEditor.editorPanelWidth,
+      300,
+    ));
+    return AppFlowyPopover(
+      controller: _popover,
+      constraints: constraints,
+      direction: PopoverDirection.bottomWithLeftAligned,
+      popupBuilder: (BuildContext context) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          widget.onFocus?.call(true);
+        });
+        return SelectOptionCellEditor(
+          cellController: widget.cellControllerBuilder.build()
+              as GridSelectOptionCellController,
+        );
+      },
+      onClose: () => widget.onFocus?.call(false),
+      child: child,
+    );
+  }
+
+  Widget _buildOptions(AppTheme theme, BuildContext context) {
+    final Widget child;
+    if (widget.selectOptions.isEmpty && widget.cellStyle != null) {
+      child = FlowyText.medium(
+        widget.cellStyle!.placeholder,
+        fontSize: 14,
+        color: theme.shader3,
+      );
+    } else {
+      final children = widget.selectOptions.map(
+        (option) {
+          return SelectOptionTag.fromOption(
+            context: context,
+            option: option,
+          );
+        },
+      ).toList();
+
+      child = Wrap(
+        spacing: 4,
+        runSpacing: 2,
+        children: children,
+      );
+    }
+    return Align(alignment: Alignment.centerLeft, child: child);
   }
 }

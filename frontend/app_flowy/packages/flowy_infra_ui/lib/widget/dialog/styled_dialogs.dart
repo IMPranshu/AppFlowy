@@ -65,7 +65,7 @@ class StyledDialog extends StatelessWidget {
 
     return FocusTraversalGroup(
       child: Container(
-        margin: margin ?? EdgeInsets.all(Insets.lGutter * 2),
+        margin: margin ?? EdgeInsets.all(Insets.sm * 2),
         alignment: Alignment.center,
         child: Container(
           constraints: BoxConstraints(
@@ -133,7 +133,9 @@ class StyledDialogRoute<T> extends PopupRoute<T> {
         super(settings: settings, filter: barrier.filter);
 
   @override
-  bool get barrierDismissible => barrier.dismissible;
+  bool get barrierDismissible {
+    return barrier.dismissible;
+  }
 
   @override
   String get barrierLabel => barrier.label;
@@ -151,9 +153,9 @@ class StyledDialogRoute<T> extends PopupRoute<T> {
   Widget buildPage(BuildContext context, Animation<double> animation,
       Animation<double> secondaryAnimation) {
     return Semantics(
-      child: _pageBuilder(context, animation, secondaryAnimation),
       scopesRoute: true,
       explicitChildNodes: true,
+      child: _pageBuilder(context, animation, secondaryAnimation),
     );
   }
 

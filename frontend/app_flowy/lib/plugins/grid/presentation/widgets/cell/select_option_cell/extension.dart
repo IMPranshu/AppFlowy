@@ -91,22 +91,16 @@ class SelectOptionTag extends StatelessWidget {
   Widget build(BuildContext context) {
     return ChoiceChip(
       pressElevation: 1,
-      label: Flexible(
-        child: FlowyText.medium(
-          name,
-          fontSize: 12,
-          overflow: TextOverflow.clip,
-        ),
+      label: FlowyText.medium(
+        name,
+        fontSize: 12,
+        overflow: TextOverflow.clip,
       ),
       selectedColor: color,
       backgroundColor: color,
       labelPadding: const EdgeInsets.symmetric(horizontal: 6),
       selected: true,
-      onSelected: (_) {
-        if (onSelected != null) {
-          onSelected!();
-        }
-      },
+      onSelected: (_) => onSelected?.call(),
     );
   }
 }

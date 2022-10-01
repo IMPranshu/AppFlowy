@@ -30,7 +30,7 @@ macro_rules! impl_type_option {
     ($target: ident, $field_type:expr) => {
         impl std::convert::From<&FieldRevision> for $target {
             fn from(field_rev: &FieldRevision) -> $target {
-                match field_rev.get_type_option_entry::<$target>($field_type.into()) {
+                match field_rev.get_type_option::<$target>($field_type.into()) {
                     None => $target::default(),
                     Some(target) => target,
                 }
@@ -39,7 +39,7 @@ macro_rules! impl_type_option {
 
         impl std::convert::From<&std::sync::Arc<FieldRevision>> for $target {
             fn from(field_rev: &std::sync::Arc<FieldRevision>) -> $target {
-                match field_rev.get_type_option_entry::<$target>($field_type.into()) {
+                match field_rev.get_type_option::<$target>($field_type.into()) {
                     None => $target::default(),
                     Some(target) => target,
                 }
@@ -52,7 +52,7 @@ macro_rules! impl_type_option {
             }
         }
 
-        impl TypeOptionDataEntry for $target {
+        impl TypeOptionDataFormat for $target {
             fn json_str(&self) -> String {
                 match serde_json::to_string(&self) {
                     Ok(s) => s,
@@ -73,7 +73,12 @@ macro_rules! impl_type_option {
                 match serde_json::from_str(s) {
                     Ok(obj) => obj,
                     Err(err) => {
-                        tracing::error!("{} convert from any data failed, {:?}", stringify!($target), err);
+                        tracing::error!(
+                            "{} type option deserialize from {} failed, {:?}",
+                            stringify!($target),
+                            s,
+                            err
+                        );
                         $target::default()
                     }
                 }

@@ -22,7 +22,13 @@ class FlexDragTargetData extends DragTargetData {
 
   Size? get feedbackSize => _state.feedbackSize;
 
+  bool get isDragging => _state.isDragging();
+
   final String dragTargetId;
+
+  Offset dragTargetOffset = Offset.zero;
+
+  final GlobalObjectKey dragTargetIndexKey;
 
   final String reorderFlexId;
 
@@ -33,6 +39,7 @@ class FlexDragTargetData extends DragTargetData {
     required this.draggingIndex,
     required this.reorderFlexId,
     required this.reorderFlexItem,
+    required this.dragTargetIndexKey,
     required DraggingState state,
   }) : _state = state;
 
@@ -40,6 +47,31 @@ class FlexDragTargetData extends DragTargetData {
   String toString() {
     return 'ReorderFlexId: $reorderFlexId, dragTargetId: $dragTargetId';
   }
+
+  bool isOverlapWithWidgets(List<GlobalObjectKey> widgetKeys) {
+    final renderBox = dragTargetIndexKey.currentContext?.findRenderObject();
+    if (renderBox == null) return false;
+    if (renderBox is! RenderBox) return false;
+    final size = feedbackSize ?? Size.zero;
+
+    final Rect dragTargetRect = renderBox.localToGlobal(Offset.zero) & size;
+    for (final widgetKey in widgetKeys) {
+      final renderObject = widgetKey.currentContext?.findRenderObject();
+      if (renderObject != null && renderObject is RenderBox) {
+        Rect widgetRect =
+            renderObject.localToGlobal(Offset.zero) & renderObject.size;
+        return dragTargetRect.overlaps(widgetRect);
+      }
+    }
+
+    return false;
+  }
+}
+
+abstract class DraggingStateStorage {
+  void insertState(String reorderFlexId, DraggingState state);
+  void removeState(String reorderFlexId);
+  DraggingState? readState(String reorderFlexId);
 }
 
 class DraggingState {
@@ -64,7 +96,7 @@ class DraggingState {
   int currentIndex = -1;
 
   /// The widget to move the dragging widget too after the current index.
-  int nextIndex = 0;
+  int nextIndex = -1;
 
   /// Whether or not we are currently scrolling this view to show a widget.
   bool scrolling = false;
@@ -100,6 +132,7 @@ class DraggingState {
     dragStartIndex = -1;
     phantomIndex = -1;
     currentIndex = -1;
+    nextIndex = -1;
     _draggingWidget = null;
   }
 
@@ -128,11 +161,20 @@ class DraggingState {
 
   /// Set the currentIndex to nextIndex
   void moveDragTargetToNext() {
+    Log.debug('$reorderFlexId updateCurrentIndex: $nextIndex');
     currentIndex = nextIndex;
   }
 
   void updateNextIndex(int index) {
     Log.debug('$reorderFlexId updateNextIndex: $index');
+    nextIndex = index;
+  }
+
+  void setStartDraggingIndex(int index) {
+    Log.debug('$reorderFlexId setDragIndex: $index');
+    dragStartIndex = index;
+    phantomIndex = index;
+    currentIndex = index;
     nextIndex = index;
   }
 

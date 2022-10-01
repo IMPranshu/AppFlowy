@@ -1,8 +1,11 @@
-import 'package:app_flowy/plugins/grid/application/field/field_cache.dart';
+import 'package:app_flowy/generated/locale_keys.g.dart';
+import 'package:app_flowy/plugins/grid/application/field/field_controller.dart';
 import 'package:app_flowy/plugins/grid/application/row/row_data_controller.dart';
 import 'package:app_flowy/startup/startup.dart';
 import 'package:app_flowy/plugins/grid/application/grid_bloc.dart';
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flowy_infra/theme.dart';
+import 'package:flowy_infra_ui/flowy_infra_ui_web.dart';
 import 'package:flowy_infra_ui/style_widget/scrolling/styled_list.dart';
 import 'package:flowy_infra_ui/style_widget/scrolling/styled_scroll_bar.dart';
 import 'package:flowy_infra_ui/style_widget/scrolling/styled_scrollview.dart';
@@ -26,8 +29,13 @@ import 'widgets/toolbar/grid_toolbar.dart';
 
 class GridPage extends StatefulWidget {
   final ViewPB view;
+  final VoidCallback? onDeleted;
 
-  GridPage({Key? key, required this.view}) : super(key: ValueKey(view.id));
+  GridPage({
+    required this.view,
+    this.onDeleted,
+    Key? key,
+  }) : super(key: ValueKey(view.id));
 
   @override
   State<GridPage> createState() => _GridPageState();
@@ -118,6 +126,7 @@ class _FlowyGridState extends State<FlowyGrid> {
             const _GridToolbarAdaptor(),
             _gridHeader(context, state.gridId),
             Flexible(child: child),
+            const RowCountBadge(),
           ],
         );
       },
@@ -157,10 +166,11 @@ class _FlowyGridState extends State<FlowyGrid> {
   }
 
   Widget _gridHeader(BuildContext context, String gridId) {
-    final fieldCache = context.read<GridBloc>().dataController.fieldCache;
+    final fieldController =
+        context.read<GridBloc>().dataController.fieldController;
     return GridHeaderSliverAdaptor(
       gridId: gridId,
-      fieldCache: fieldCache,
+      fieldController: fieldController,
       anchorScrollController: headerScrollController,
     );
   }
@@ -173,10 +183,11 @@ class _GridToolbarAdaptor extends StatelessWidget {
   Widget build(BuildContext context) {
     return BlocSelector<GridBloc, GridState, GridToolbarContext>(
       selector: (state) {
-        final fieldCache = context.read<GridBloc>().dataController.fieldCache;
+        final fieldController =
+            context.read<GridBloc>().dataController.fieldController;
         return GridToolbarContext(
           gridId: state.gridId,
-          fieldCache: fieldCache,
+          fieldController: fieldController,
         );
       },
       builder: (context, toolbarContext) {
@@ -247,10 +258,11 @@ class _GridRowsState extends State<_GridRows> {
     /// Return placeholder widget if the rowCache is null.
     if (rowCache == null) return const SizedBox();
 
-    final fieldCache = context.read<GridBloc>().dataController.fieldCache;
+    final fieldController =
+        context.read<GridBloc>().dataController.fieldController;
     final dataController = GridRowDataController(
       rowInfo: rowInfo,
-      fieldCache: fieldCache,
+      fieldController: fieldController,
       rowCache: rowCache,
     );
 
@@ -264,7 +276,7 @@ class _GridRowsState extends State<_GridRows> {
           _openRowDetailPage(
             context,
             rowInfo,
-            fieldCache,
+            fieldController,
             rowCache,
             cellBuilder,
           );
@@ -277,20 +289,24 @@ class _GridRowsState extends State<_GridRows> {
   void _openRowDetailPage(
     BuildContext context,
     RowInfo rowInfo,
-    GridFieldCache fieldCache,
+    GridFieldController fieldController,
     GridRowCache rowCache,
     GridCellBuilder cellBuilder,
   ) {
     final dataController = GridRowDataController(
       rowInfo: rowInfo,
-      fieldCache: fieldCache,
+      fieldController: fieldController,
       rowCache: rowCache,
     );
 
-    RowDetailPage(
-      cellBuilder: cellBuilder,
-      dataController: dataController,
-    ).show(context);
+    FlowyOverlay.show(
+        context: context,
+        builder: (BuildContext context) {
+          return RowDetailPage(
+            cellBuilder: cellBuilder,
+            dataController: dataController,
+          );
+        });
   }
 }
 
@@ -299,48 +315,46 @@ class _GridFooter extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final rowCount = context.watch<GridBloc>().state.rowInfos.length;
-    final theme = context.watch<AppTheme>();
     return SliverPadding(
       padding: const EdgeInsets.only(bottom: 200),
       sliver: SliverToBoxAdapter(
         child: SizedBox(
           height: GridSize.footerHeight,
           child: Padding(
-            padding: GridSize.headerContentInsets,
-            child: Row(
-              children: [
-                SizedBox(width: GridSize.leadingHeaderPadding),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const SizedBox(width: 120, child: GridAddRowButton()),
-                    const SizedBox(height: 30),
-                    _rowCountTextWidget(theme: theme, count: rowCount)
-                  ],
-                ),
-              ],
-            ),
+            padding: GridSize.footerContentInsets,
+            child: const SizedBox(height: 40, child: GridAddRowButton()),
           ),
         ),
       ),
     );
   }
+}
 
-  Widget _rowCountTextWidget({required AppTheme theme, required int count}) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.start,
-      children: [
-        FlowyText.regular(
-          'Count : ',
-          fontSize: 13,
-          color: theme.shader3,
-        ),
-        FlowyText.regular(
-          count.toString(),
-          fontSize: 13,
-        ),
-      ],
+class RowCountBadge extends StatelessWidget {
+  const RowCountBadge({Key? key}) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = context.watch<AppTheme>();
+
+    return BlocSelector<GridBloc, GridState, int>(
+      selector: (state) => state.rowCount,
+      builder: (context, rowCount) {
+        return Padding(
+          padding: GridSize.footerContentInsets,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.start,
+            children: [
+              FlowyText.regular(
+                '${LocaleKeys.grid_row_count.tr()} : ',
+                fontSize: 13,
+                color: theme.shader3,
+              ),
+              FlowyText.regular(rowCount.toString(), fontSize: 13),
+            ],
+          ),
+        );
+      },
     );
   }
 }

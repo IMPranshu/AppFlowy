@@ -1,8 +1,10 @@
+import 'package:flowy_infra_ui/flowy_infra_ui.dart';
 import 'package:flowy_infra_ui/style_widget/text.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:app_flowy/startup/startup.dart';
 import 'package:app_flowy/plugins/grid/application/prelude.dart';
+import 'package:appflowy_popover/appflowy_popover.dart';
 
 import '../cell_builder.dart';
 import 'date_editor.dart';
@@ -39,11 +41,14 @@ class GridDateCell extends GridCellWidget {
 }
 
 class _DateCellState extends GridCellState<GridDateCell> {
+  late PopoverController _popover;
   late DateCellBloc _cellBloc;
 
   @override
   void initState() {
-    final cellController = widget.cellControllerBuilder.build();
+    _popover = PopoverController();
+    final cellController =
+        widget.cellControllerBuilder.build() as GridDateCellController;
     _cellBloc = getIt<DateCellBloc>(param1: cellController)
       ..add(const DateCellEvent.initial());
     super.initState();
@@ -53,38 +58,40 @@ class _DateCellState extends GridCellState<GridDateCell> {
   Widget build(BuildContext context) {
     final alignment = widget.cellStyle != null
         ? widget.cellStyle!.alignment
-        : Alignment.center;
+        : Alignment.centerLeft;
     return BlocProvider.value(
       value: _cellBloc,
       child: BlocBuilder<DateCellBloc, DateCellState>(
         builder: (context, state) {
-          return SizedBox.expand(
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () => _showCalendar(context),
-              child: MouseRegion(
-                opaque: false,
-                cursor: SystemMouseCursors.click,
+          return AppFlowyPopover(
+            controller: _popover,
+            triggerActions: PopoverTriggerFlags.none,
+            direction: PopoverDirection.bottomWithLeftAligned,
+            constraints: BoxConstraints.loose(const Size(320, 500)),
+            margin: EdgeInsets.zero,
+            child: SizedBox.expand(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => _popover.show(),
                 child: Align(
                   alignment: alignment,
                   child: FlowyText.medium(state.dateStr, fontSize: 12),
                 ),
               ),
             ),
+            popupBuilder: (BuildContext popoverContent) {
+              return DateCellEditor(
+                cellController: widget.cellControllerBuilder.build()
+                    as GridDateCellController,
+                onDismissed: () => widget.onCellEditing.value = false,
+              );
+            },
+            onClose: () {
+              widget.onCellEditing.value = false;
+            },
           );
         },
       ),
-    );
-  }
-
-  void _showCalendar(BuildContext context) {
-    final bloc = context.read<DateCellBloc>();
-    widget.onCellEditing.value = true;
-    final calendar =
-        DateCellEditor(onDismissed: () => widget.onCellEditing.value = false);
-    calendar.show(
-      context,
-      cellController: bloc.cellController.clone(),
     );
   }
 

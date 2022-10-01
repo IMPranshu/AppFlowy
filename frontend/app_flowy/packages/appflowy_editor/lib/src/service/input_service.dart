@@ -1,4 +1,5 @@
 import 'package:appflowy_editor/src/infra/log.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -43,11 +44,13 @@ abstract class AppFlowyInputService {
 class AppFlowyInput extends StatefulWidget {
   const AppFlowyInput({
     Key? key,
+    this.editable = true,
     required this.editorState,
     required this.child,
   }) : super(key: key);
 
   final EditorState editorState;
+  final bool editable;
   final Widget child;
 
   @override
@@ -61,41 +64,57 @@ class _AppFlowyInputState extends State<AppFlowyInput>
 
   EditorState get _editorState => widget.editorState;
 
+  // Disable space shortcut on the Web platform.
+  final Map<ShortcutActivator, Intent> _shortcuts = kIsWeb
+      ? {
+          LogicalKeySet(LogicalKeyboardKey.space):
+              DoNothingAndStopPropagationIntent(),
+        }
+      : {};
+
   @override
   void initState() {
     super.initState();
 
-    _editorState.service.selectionService.currentSelection
-        .addListener(_onSelectionChange);
+    if (widget.editable) {
+      _editorState.service.selectionService.currentSelection
+          .addListener(_onSelectionChange);
+    }
   }
 
   @override
   void dispose() {
-    close();
-    _editorState.service.selectionService.currentSelection
-        .removeListener(_onSelectionChange);
+    if (widget.editable) {
+      close();
+      _editorState.service.selectionService.currentSelection
+          .removeListener(_onSelectionChange);
+    }
 
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return Shortcuts(
+      shortcuts: _shortcuts,
       child: widget.child,
     );
   }
 
   @override
   void attach(TextEditingValue textEditingValue) {
-    _textInputConnection ??= TextInput.attach(
-      this,
-      const TextInputConfiguration(
-        // TODO: customize
-        enableDeltaModel: true,
-        inputType: TextInputType.multiline,
-        textCapitalization: TextCapitalization.sentences,
-      ),
-    );
+    if (_textInputConnection == null ||
+        _textInputConnection!.attached == false) {
+      _textInputConnection = TextInput.attach(
+        this,
+        const TextInputConfiguration(
+          // TODO: customize
+          enableDeltaModel: true,
+          inputType: TextInputType.multiline,
+          textCapitalization: TextCapitalization.sentences,
+        ),
+      );
+    }
 
     _textInputConnection!
       ..setEditingState(textEditingValue)
@@ -278,7 +297,11 @@ class _AppFlowyInputState extends State<AppFlowyInput>
         _updateCaretPosition(textNodes.first, selection);
       }
     } else {
-      // close();
+      // https://github.com/flutter/flutter/issues/104944
+      // Disable IME for the Web.
+      if (kIsWeb) {
+        close();
+      }
     }
   }
 

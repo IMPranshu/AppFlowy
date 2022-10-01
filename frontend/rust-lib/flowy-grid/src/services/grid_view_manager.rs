@@ -1,6 +1,6 @@
 use crate::entities::{
-    CreateFilterParams, CreateRowParams, DeleteFilterParams, GridFilterConfiguration, GridSettingPB, MoveGroupParams,
-    RepeatedGridGroupPB, RowPB,
+    CreateRowParams, DeleteFilterParams, DeleteGroupParams, GridFilterConfigurationPB, GridSettingPB,
+    InsertFilterParams, InsertGroupParams, MoveGroupParams, RepeatedGridGroupPB, RowPB,
 };
 use crate::manager::GridUser;
 use crate::services::grid_editor_task::GridServiceTaskScheduler;
@@ -56,6 +56,12 @@ impl GridViewManager {
         })
     }
 
+    pub(crate) async fn duplicate_grid_view(&self) -> FlowyResult<String> {
+        let editor = self.get_default_view_editor().await?;
+        let view_data = editor.duplicate_view_data().await?;
+        Ok(view_data)
+    }
+
     /// When the row was created, we may need to modify the [RowRevision] according to the [CreateRowParams].
     pub(crate) async fn will_create_row(&self, row_rev: &mut RowRevision, params: &CreateRowParams) {
         for view_editor in self.view_editors.iter() {
@@ -84,6 +90,12 @@ impl GridViewManager {
         }
     }
 
+    pub(crate) async fn group_by_field(&self, field_id: &str) -> FlowyResult<()> {
+        let view_editor = self.get_default_view_editor().await?;
+        let _ = view_editor.group_by_field(field_id).await?;
+        Ok(())
+    }
+
     pub(crate) async fn did_update_cell(&self, row_id: &str, _field_id: &str) {
         self.did_update_row(row_id).await
     }
@@ -99,25 +111,35 @@ impl GridViewManager {
         Ok(view_editor.get_setting().await)
     }
 
-    pub(crate) async fn get_filters(&self) -> FlowyResult<Vec<GridFilterConfiguration>> {
+    pub(crate) async fn get_filters(&self) -> FlowyResult<Vec<GridFilterConfigurationPB>> {
         let view_editor = self.get_default_view_editor().await?;
         Ok(view_editor.get_filters().await)
     }
 
-    pub(crate) async fn update_filter(&self, insert_filter: CreateFilterParams) -> FlowyResult<()> {
+    pub(crate) async fn insert_or_update_filter(&self, params: InsertFilterParams) -> FlowyResult<()> {
         let view_editor = self.get_default_view_editor().await?;
-        view_editor.insert_filter(insert_filter).await
+        view_editor.insert_filter(params).await
     }
 
-    pub(crate) async fn delete_filter(&self, delete_filter: DeleteFilterParams) -> FlowyResult<()> {
+    pub(crate) async fn delete_filter(&self, params: DeleteFilterParams) -> FlowyResult<()> {
         let view_editor = self.get_default_view_editor().await?;
-        view_editor.delete_filter(delete_filter).await
+        view_editor.delete_filter(params).await
     }
 
     pub(crate) async fn load_groups(&self) -> FlowyResult<RepeatedGridGroupPB> {
         let view_editor = self.get_default_view_editor().await?;
         let groups = view_editor.load_groups().await?;
         Ok(RepeatedGridGroupPB { items: groups })
+    }
+
+    pub(crate) async fn insert_or_update_group(&self, params: InsertGroupParams) -> FlowyResult<()> {
+        let view_editor = self.get_default_view_editor().await?;
+        view_editor.insert_group(params).await
+    }
+
+    pub(crate) async fn delete_group(&self, params: DeleteGroupParams) -> FlowyResult<()> {
+        let view_editor = self.get_default_view_editor().await?;
+        view_editor.delete_group(params).await
     }
 
     pub(crate) async fn move_group(&self, params: MoveGroupParams) -> FlowyResult<()> {
@@ -134,24 +156,38 @@ impl GridViewManager {
         row_rev: Arc<RowRevision>,
         to_group_id: String,
         to_row_id: Option<String>,
-    ) -> Option<RowChangeset> {
+        recv_row_changeset: impl FnOnce(RowChangeset) -> AFFuture<()>,
+    ) -> FlowyResult<()> {
         let mut row_changeset = RowChangeset::new(row_rev.id.clone());
-        for view_editor in self.view_editors.iter() {
-            view_editor
-                .move_group_row(&row_rev, &mut row_changeset, &to_group_id, to_row_id.clone())
-                .await;
+        let view_editor = self.get_default_view_editor().await?;
+        let group_changesets = view_editor
+            .move_group_row(&row_rev, &mut row_changeset, &to_group_id, to_row_id.clone())
+            .await;
+
+        if !row_changeset.is_empty() {
+            recv_row_changeset(row_changeset).await;
         }
 
-        if row_changeset.is_empty() {
-            None
-        } else {
-            Some(row_changeset)
+        for group_changeset in group_changesets {
+            view_editor.notify_did_update_group(group_changeset).await;
         }
+
+        Ok(())
     }
 
-    pub(crate) async fn did_update_field(&self, field_id: &str) -> FlowyResult<()> {
+    #[tracing::instrument(level = "trace", skip(self), err)]
+    pub(crate) async fn did_update_field(&self, field_id: &str, is_type_option_changed: bool) -> FlowyResult<()> {
         let view_editor = self.get_default_view_editor().await?;
-        let _ = view_editor.did_update_field(field_id).await?;
+        // Only the field_id of the updated field is equal to the field_id of the group.
+        // Update the group
+        if view_editor.group_id().await != field_id {
+            return Ok(());
+        }
+        if is_type_option_changed {
+            let _ = view_editor.group_by_field(field_id).await?;
+        } else {
+            let _ = view_editor.did_update_field(field_id).await?;
+        }
         Ok(())
     }
 

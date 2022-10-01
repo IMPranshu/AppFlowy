@@ -4,7 +4,6 @@ import 'dart:ui';
 import 'package:flowy_infra_ui/src/flowy_overlay/layout.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-export './overlay_container.dart';
 
 /// Specifies how overlay are anchored to the SourceWidget
 enum AnchorDirection {
@@ -107,6 +106,19 @@ class FlowyOverlay extends StatefulWidget {
       state = context.findAncestorStateOfType<FlowyOverlayState>();
     }
     return state;
+  }
+
+  static void show(
+      {required BuildContext context,
+      required Widget Function(BuildContext context) builder}) {
+    showDialog(
+      context: context,
+      builder: builder,
+    );
+  }
+
+  static void pop(BuildContext context) {
+    Navigator.of(context).pop();
   }
 
   @override
@@ -398,8 +410,8 @@ class FlowyOverlayState extends State<FlowyOverlay> {
 
       if (style.blur) {
         child = BackdropFilter(
-          child: child,
           filter: ImageFilter.blur(sigmaX: 4, sigmaY: 4),
+          child: child,
         );
       }
     }

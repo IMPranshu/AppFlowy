@@ -13,6 +13,8 @@ pub enum GridNotification {
     DidUpdateField = 50,
     DidUpdateGroupView = 60,
     DidUpdateGroup = 61,
+    DidGroupByNewField = 62,
+    DidUpdateGridSetting = 70,
 }
 
 impl std::default::Default for GridNotification {
@@ -30,9 +32,4 @@ impl std::convert::From<GridNotification> for i32 {
 #[tracing::instrument(level = "trace")]
 pub fn send_dart_notification(id: &str, ty: GridNotification) -> DartNotifyBuilder {
     DartNotifyBuilder::new(id, ty, OBSERVABLE_CATEGORY)
-}
-
-#[tracing::instrument(level = "trace")]
-pub fn send_anonymous_dart_notification(ty: GridNotification) -> DartNotifyBuilder {
-    DartNotifyBuilder::new("", ty, OBSERVABLE_CATEGORY)
 }

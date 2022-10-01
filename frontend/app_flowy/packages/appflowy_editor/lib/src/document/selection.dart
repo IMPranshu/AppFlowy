@@ -40,20 +40,22 @@ class Selection {
   bool get isCollapsed => start == end;
   bool get isSingle => pathEquals(start.path, end.path);
   bool get isForward =>
-      (start.path >= end.path && !pathEquals(start.path, end.path)) ||
-      (isSingle && start.offset > end.offset);
+      (start.path > end.path) || (isSingle && start.offset > end.offset);
   bool get isBackward =>
-      (start.path <= end.path && !pathEquals(start.path, end.path)) ||
-      (isSingle && start.offset < end.offset);
+      (start.path < end.path) || (isSingle && start.offset < end.offset);
 
-  Selection normalize() {
+  Selection get normalize {
     if (isForward) {
-      return Selection(start: end, end: start);
+      return reversed;
     }
     return this;
   }
 
   Selection get reversed => copyWith(start: end, end: start);
+
+  int get startIndex => normalize.start.offset;
+  int get endIndex => normalize.end.offset;
+  int get length => endIndex - startIndex;
 
   Selection collapse({bool atStart = false}) {
     if (atStart) {

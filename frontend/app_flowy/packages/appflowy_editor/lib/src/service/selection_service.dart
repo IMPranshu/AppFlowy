@@ -57,6 +57,9 @@ abstract class AppFlowySelectionService {
   /// Clears the selection area, cursor area and the popup list area.
   void clearSelection();
 
+  /// Clears the cursor area.
+  void clearCursor();
+
   /// Returns the [Node]s in [Selection].
   List<Node> getNodesInSelection(Selection selection);
 
@@ -79,8 +82,9 @@ abstract class AppFlowySelectionService {
 class AppFlowySelection extends StatefulWidget {
   const AppFlowySelection({
     Key? key,
-    this.cursorColor = Colors.black,
+    this.cursorColor = const Color(0xFF00BCF0),
     this.selectionColor = const Color.fromARGB(53, 111, 201, 231),
+    this.editable = true,
     required this.editorState,
     required this.child,
   }) : super(key: key);
@@ -89,6 +93,7 @@ class AppFlowySelection extends StatefulWidget {
   final Widget child;
   final Color cursorColor;
   final Color selectionColor;
+  final bool editable;
 
   @override
   State<AppFlowySelection> createState() => _AppFlowySelectionState();
@@ -141,15 +146,21 @@ class _AppFlowySelectionState extends State<AppFlowySelection>
 
   @override
   Widget build(BuildContext context) {
-    return SelectionGestureDetector(
-      onPanStart: _onPanStart,
-      onPanUpdate: _onPanUpdate,
-      onPanEnd: _onPanEnd,
-      onTapDown: _onTapDown,
-      onDoubleTapDown: _onDoubleTapDown,
-      onTripleTapDown: _onTripleTapDown,
-      child: widget.child,
-    );
+    if (!widget.editable) {
+      return Container(
+        child: widget.child,
+      );
+    } else {
+      return SelectionGestureDetector(
+        onPanStart: _onPanStart,
+        onPanUpdate: _onPanUpdate,
+        onPanEnd: _onPanEnd,
+        onTapDown: _onTapDown,
+        onDoubleTapDown: _onDoubleTapDown,
+        onTripleTapDown: _onTripleTapDown,
+        child: widget.child,
+      );
+    }
   }
 
   @override
@@ -181,6 +192,10 @@ class _AppFlowySelectionState extends State<AppFlowySelection>
 
   @override
   void updateSelection(Selection? selection) {
+    if (!widget.editable) {
+      return;
+    }
+
     selectionRects.clear();
     clearSelection();
 
@@ -205,16 +220,23 @@ class _AppFlowySelectionState extends State<AppFlowySelection>
     currentSelectedNodes = [];
     currentSelection.value = null;
 
+    clearCursor();
     // clear selection areas
     _selectionAreas
       ..forEach((overlay) => overlay.remove())
       ..clear();
     // clear cursor areas
+
+    // hide toolbar
+    editorState.service.toolbarService?.hide();
+  }
+
+  @override
+  void clearCursor() {
+    // clear cursor areas
     _cursorAreas
       ..forEach((overlay) => overlay.remove())
       ..clear();
-    // hide toolbar
-    editorState.service.toolbarService?.hide();
   }
 
   @override
@@ -313,6 +335,7 @@ class _AppFlowySelectionState extends State<AppFlowySelection>
 
     // compute the selection in range.
     if (first != null && last != null) {
+      Log.selection.debug('first = $first, last = $last');
       final start =
           first.getSelectionInRange(panStartOffset, panEndOffset).start;
       final end = last.getSelectionInRange(panStartOffset, panEndOffset).end;
@@ -333,15 +356,17 @@ class _AppFlowySelectionState extends State<AppFlowySelection>
     currentSelectedNodes = nodes;
 
     // TODO: need to be refactored.
-    Rect? topmostRect;
+    Offset? toolbarOffset;
     LayerLink? layerLink;
+    final editorOffset =
+        editorState.renderBox?.localToGlobal(Offset.zero) ?? Offset.zero;
 
     final backwardNodes =
         selection.isBackward ? nodes : nodes.reversed.toList(growable: false);
-    final backwardSelection = selection.isBackward
-        ? selection
-        : selection.copyWith(start: selection.end, end: selection.start);
-    assert(backwardSelection.isBackward);
+    final normalizedSelection = selection.normalize;
+    assert(normalizedSelection.isBackward);
+
+    Log.selection.debug('update selection areas, $normalizedSelection');
 
     for (var i = 0; i < backwardNodes.length; i++) {
       final node = backwardNodes[i];
@@ -350,7 +375,7 @@ class _AppFlowySelectionState extends State<AppFlowySelection>
         continue;
       }
 
-      var newSelection = backwardSelection.copy();
+      var newSelection = normalizedSelection.copy();
 
       /// In the case of multiple selections,
       ///  we need to return a new selection for each selected node individually.
@@ -360,7 +385,7 @@ class _AppFlowySelectionState extends State<AppFlowySelection>
       /// text: ghijkl
       /// text: mn>opqr
       ///
-      if (!backwardSelection.isSingle) {
+      if (!normalizedSelection.isSingle) {
         if (i == 0) {
           newSelection = newSelection.copyWith(end: selectable.end());
         } else if (i == nodes.length - 1) {
@@ -373,13 +398,20 @@ class _AppFlowySelectionState extends State<AppFlowySelection>
         }
       }
 
+      const baseToolbarOffset = Offset(0, 35.0);
       final rects = selectable.getRectsInSelection(newSelection);
       for (final rect in rects) {
-        // TODO: Need to compute more precise location.
-        topmostRect ??= rect;
-        layerLink ??= node.layerLink;
+        final selectionRect = _transformRectToGlobal(selectable, rect);
+        selectionRects.add(selectionRect);
 
-        selectionRects.add(_transformRectToGlobal(selectable, rect));
+        // TODO: Need to compute more precise location.
+        if ((selectionRect.topLeft.dy - editorOffset.dy) <=
+            baseToolbarOffset.dy) {
+          toolbarOffset ??= rect.bottomLeft;
+        } else {
+          toolbarOffset ??= rect.topLeft - baseToolbarOffset;
+        }
+        layerLink ??= node.layerLink;
 
         final overlay = OverlayEntry(
           builder: (context) => SelectionWidget(
@@ -394,9 +426,11 @@ class _AppFlowySelectionState extends State<AppFlowySelection>
 
     Overlay.of(context)?.insertAll(_selectionAreas);
 
-    if (topmostRect != null && layerLink != null) {
-      editorState.service.toolbarService
-          ?.showInOffset(topmostRect.topLeft, layerLink);
+    if (toolbarOffset != null && layerLink != null) {
+      editorState.service.toolbarService?.showInOffset(
+        toolbarOffset,
+        layerLink,
+      );
     }
   }
 
@@ -502,7 +536,7 @@ class _AppFlowySelectionState extends State<AppFlowySelection>
     editorState.service.scrollService?.enable();
   }
 
-  Rect _transformRectToGlobal(Selectable selectable, Rect r) {
+  Rect _transformRectToGlobal(SelectableMixin selectable, Rect r) {
     final Offset topLeft = selectable.localToGlobal(Offset(r.left, r.top));
     return Rect.fromLTWH(topLeft.dx, topLeft.dy, r.width, r.height);
   }

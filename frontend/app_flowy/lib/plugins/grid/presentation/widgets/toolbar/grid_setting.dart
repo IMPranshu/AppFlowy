@@ -2,7 +2,6 @@ import 'package:app_flowy/plugins/grid/application/setting/setting_bloc.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flowy_infra/image.dart';
 import 'package:flowy_infra/theme.dart';
-import 'package:flowy_infra_ui/flowy_infra_ui.dart';
 import 'package:flowy_infra_ui/style_widget/button.dart';
 import 'package:flowy_infra_ui/style_widget/scrolling/styled_list.dart';
 import 'package:flowy_infra_ui/style_widget/text.dart';
@@ -11,17 +10,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import 'package:app_flowy/generated/locale_keys.g.dart';
-import '../../../application/field/field_cache.dart';
+import '../../../application/field/field_controller.dart';
 import '../../layout/sizes.dart';
-import 'grid_property.dart';
 
 class GridSettingContext {
   final String gridId;
-  final GridFieldCache fieldCache;
+  final GridFieldController fieldController;
 
   GridSettingContext({
     required this.gridId,
-    required this.fieldCache,
+    required this.fieldController,
   });
 }
 
@@ -32,37 +30,6 @@ class GridSettingList extends StatelessWidget {
       {required this.settingContext, required this.onAction, Key? key})
       : super(key: key);
 
-  static void show(BuildContext context, GridSettingContext settingContext) {
-    final list = GridSettingList(
-      settingContext: settingContext,
-      onAction: (action, settingContext) {
-        switch (action) {
-          case GridSettingAction.filter:
-            break;
-          case GridSettingAction.sortBy:
-            break;
-          case GridSettingAction.properties:
-            GridPropertyList(
-                    gridId: settingContext.gridId,
-                    fieldCache: settingContext.fieldCache)
-                .show(context);
-            break;
-        }
-      },
-    );
-
-    FlowyOverlay.of(context).insertWithAnchor(
-      widget: OverlayContainer(
-        child: list,
-        constraints: BoxConstraints.loose(const Size(140, 400)),
-      ),
-      identifier: list.identifier(),
-      anchorContext: context,
-      anchorDirection: AnchorDirection.bottomRight,
-      style: FlowyOverlayStyle(blur: false),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return BlocProvider(
@@ -72,7 +39,6 @@ class GridSettingList extends StatelessWidget {
             previous.selectedAction != current.selectedAction,
         listener: (context, state) {
           state.selectedAction.foldLeft(null, (_, action) {
-            FlowyOverlay.of(context).remove(identifier());
             onAction(action, settingContext);
           });
         },

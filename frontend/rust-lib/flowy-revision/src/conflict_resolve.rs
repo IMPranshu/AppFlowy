@@ -9,8 +9,8 @@ use flowy_sync::{
     util::make_delta_from_revisions,
 };
 use lib_infra::future::BoxResultFuture;
-use lib_ot::core::{Attributes, Delta, PhantomAttributes};
-use lib_ot::rich_text::RichTextAttributes;
+use lib_ot::core::{Attributes, EmptyAttributes, OperationAttributes, Operations};
+
 use serde::de::DeserializeOwned;
 use std::{convert::TryFrom, sync::Arc};
 
@@ -18,11 +18,11 @@ pub type DeltaMD5 = String;
 
 pub trait ConflictResolver<T>
 where
-    T: Attributes + Send + Sync,
+    T: OperationAttributes + Send + Sync,
 {
-    fn compose_delta(&self, delta: Delta<T>) -> BoxResultFuture<DeltaMD5, FlowyError>;
-    fn transform_delta(&self, delta: Delta<T>) -> BoxResultFuture<TransformDeltas<T>, FlowyError>;
-    fn reset_delta(&self, delta: Delta<T>) -> BoxResultFuture<DeltaMD5, FlowyError>;
+    fn compose_delta(&self, delta: Operations<T>) -> BoxResultFuture<DeltaMD5, FlowyError>;
+    fn transform_delta(&self, delta: Operations<T>) -> BoxResultFuture<TransformDeltas<T>, FlowyError>;
+    fn reset_delta(&self, delta: Operations<T>) -> BoxResultFuture<DeltaMD5, FlowyError>;
 }
 
 pub trait ConflictRevisionSink: Send + Sync + 'static {
@@ -30,12 +30,12 @@ pub trait ConflictRevisionSink: Send + Sync + 'static {
     fn ack(&self, rev_id: String, ty: ServerRevisionWSDataType) -> BoxResultFuture<(), FlowyError>;
 }
 
-pub type RichTextConflictController = ConflictController<RichTextAttributes>;
-pub type PlainTextConflictController = ConflictController<PhantomAttributes>;
+pub type RichTextConflictController = ConflictController<Attributes>;
+pub type PlainTextConflictController = ConflictController<EmptyAttributes>;
 
 pub struct ConflictController<T>
 where
-    T: Attributes + Send + Sync,
+    T: OperationAttributes + Send + Sync,
 {
     user_id: String,
     resolver: Arc<dyn ConflictResolver<T> + Send + Sync>,
@@ -45,7 +45,7 @@ where
 
 impl<T> ConflictController<T>
 where
-    T: Attributes + Send + Sync + DeserializeOwned + serde::Serialize,
+    T: OperationAttributes + Send + Sync + DeserializeOwned + serde::Serialize,
 {
     pub fn new(
         user_id: &str,
@@ -142,12 +142,12 @@ where
 fn make_client_and_server_revision<T>(
     user_id: &str,
     rev_manager: &Arc<RevisionManager>,
-    client_delta: Delta<T>,
-    server_delta: Option<Delta<T>>,
+    client_delta: Operations<T>,
+    server_delta: Option<Operations<T>>,
     md5: String,
 ) -> (Revision, Option<Revision>)
 where
-    T: Attributes + serde::Serialize,
+    T: OperationAttributes + serde::Serialize,
 {
     let (base_rev_id, rev_id) = rev_manager.next_rev_id_pair();
     let client_revision = Revision::new(
@@ -175,12 +175,12 @@ where
     }
 }
 
-pub type RichTextTransformDeltas = TransformDeltas<RichTextAttributes>;
+pub type RichTextTransformDeltas = TransformDeltas<Attributes>;
 
 pub struct TransformDeltas<T>
 where
-    T: Attributes,
+    T: OperationAttributes,
 {
-    pub client_prime: Delta<T>,
-    pub server_prime: Option<Delta<T>>,
+    pub client_prime: Operations<T>,
+    pub server_prime: Option<Operations<T>>,
 }

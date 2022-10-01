@@ -1,5 +1,9 @@
+import 'package:app_flowy/plugins/blank/blank.dart';
 import 'package:app_flowy/startup/plugin/plugin.dart';
 import 'package:app_flowy/workspace/application/home/home_bloc.dart';
+import 'package:app_flowy/workspace/application/home/home_service.dart';
+
+import 'package:app_flowy/workspace/presentation/home/hotkeys.dart';
 import 'package:app_flowy/workspace/application/view/view_ext.dart';
 import 'package:app_flowy/workspace/presentation/widgets/edit_panel/panel_animation.dart';
 import 'package:app_flowy/workspace/presentation/widgets/float_bubble/question_bubble.dart';
@@ -30,19 +34,6 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  ViewPB? initialView;
-
-  @override
-  void initState() {
-    super.initState();
-  }
-
-  @override
-  void didUpdateWidget(covariant HomeScreen oldWidget) {
-    initialView = null;
-    super.didUpdateWidget(oldWidget);
-  }
-
   @override
   Widget build(BuildContext context) {
     return MultiBlocProvider(
@@ -54,7 +45,8 @@ class _HomeScreenState extends State<HomeScreen> {
           },
         ),
       ],
-      child: Scaffold(
+      child: HomeHotKeys(
+          child: Scaffold(
         body: BlocListener<HomeBloc, HomeState>(
           listenWhen: (p, c) => p.unauthorized != c.unauthorized,
           listener: (context, state) {
@@ -75,21 +67,25 @@ class _HomeScreenState extends State<HomeScreen> {
               return FlowyContainer(
                 Theme.of(context).colorScheme.surface,
                 // Colors.white,
-                child: _buildBody(state),
+                child: _buildBody(context, state),
               );
             },
           ),
         ),
-      ),
+      )),
     );
   }
 
-  Widget _buildBody(HomeState state) {
+  Widget _buildBody(BuildContext context, HomeState state) {
     return LayoutBuilder(
       builder: (BuildContext context, BoxConstraints constraints) {
         final layout = HomeLayout(context, constraints, state.forceCollapse);
         final homeStack = HomeStack(
           layout: layout,
+          delegate: HomeScreenStackAdaptor(
+            buildContext: context,
+            homeState: state,
+          ),
         );
         final menu = _buildHomeMenu(
           layout: layout,
@@ -120,26 +116,29 @@ class _HomeScreenState extends State<HomeScreen> {
       required BuildContext context,
       required HomeState state}) {
     final workspaceSetting = state.workspaceSetting;
-    if (initialView == null && workspaceSetting.hasLatestView()) {
-      initialView = workspaceSetting.latestView;
-      final plugin = makePlugin(
-        pluginType: initialView!.pluginType,
-        data: initialView,
-      );
-      getIt<HomeStackManager>().setPlugin(plugin);
-    }
-
-    HomeMenu homeMenu = HomeMenu(
+    final homeMenu = HomeMenu(
       user: widget.user,
       workspaceSetting: workspaceSetting,
       collapsedNotifier: getIt<HomeStackManager>().collapsedNotifier,
     );
 
-    final latestView =
-        workspaceSetting.hasLatestView() ? workspaceSetting.latestView : null;
-    if (getIt<MenuSharedState>().latestOpenView == null) {
-      /// AppFlowy will open the view that the last time the user opened it. The _buildHomeMenu will get called when AppFlowy's screen resizes. So we only set the latestOpenView when it's null.
-      getIt<MenuSharedState>().latestOpenView = latestView;
+    // Only open the last opened view if the [HomeStackManager] current opened
+    // plugin is blank and the last opened view is not null.
+    //
+    // All opened widgets that display on the home screen are in the form
+    // of plugins. There is a list of built-in plugins defined in the
+    // [PluginType] enum, including board, grid and trash.
+    if (getIt<HomeStackManager>().plugin.ty == PluginType.blank) {
+      // Open the last opened view.
+      if (workspaceSetting.hasLatestView()) {
+        final view = workspaceSetting.latestView;
+        final plugin = makePlugin(
+          pluginType: view.pluginType,
+          data: view,
+        );
+        getIt<HomeStackManager>().setPlugin(plugin);
+        getIt<MenuSharedState>().latestOpenView = view;
+      }
     }
 
     return FocusTraversalGroup(child: RepaintBoundary(child: homeMenu));
@@ -200,18 +199,6 @@ class _HomeScreenState extends State<HomeScreen> {
   }) {
     return Stack(
       children: [
-        homeMenu
-            .animatedPanelX(
-              closeX: -layout.menuWidth,
-              isClosed: !layout.showMenu,
-            )
-            .positioned(
-                left: 0,
-                top: 0,
-                width: layout.menuWidth,
-                bottom: 0,
-                animate: true)
-            .animate(layout.animDuration, Curves.easeOut),
         homeStack
             .constrained(minWidth: 500)
             .positioned(
@@ -237,7 +224,58 @@ class _HomeScreenState extends State<HomeScreen> {
             )
             .positioned(
                 right: 0, top: 0, bottom: 0, width: layout.editPanelWidth),
+        homeMenu
+            .animatedPanelX(
+              closeX: -layout.menuWidth,
+              isClosed: !layout.showMenu,
+            )
+            .positioned(
+                left: 0,
+                top: 0,
+                width: layout.menuWidth,
+                bottom: 0,
+                animate: true)
+            .animate(layout.animDuration, Curves.easeOut),
       ],
     );
+  }
+}
+
+class HomeScreenStackAdaptor extends HomeStackDelegate {
+  final BuildContext buildContext;
+  final HomeState homeState;
+
+  HomeScreenStackAdaptor({
+    required this.buildContext,
+    required this.homeState,
+  });
+
+  @override
+  void didDeleteStackWidget(ViewPB view, int? index) {
+    final homeService = HomeService();
+    homeService.readApp(appId: view.appId).then((result) {
+      result.fold(
+        (appPB) {
+          final List<ViewPB> views = appPB.belongings.items;
+          if (views.isNotEmpty) {
+            var lastView = views.last;
+            if (index != null && index != 0 && views.length > index - 1) {
+              lastView = views[index - 1];
+            }
+
+            final plugin = makePlugin(
+              pluginType: lastView.pluginType,
+              data: lastView,
+            );
+            getIt<MenuSharedState>().latestOpenView = lastView;
+            getIt<HomeStackManager>().setPlugin(plugin);
+          } else {
+            getIt<MenuSharedState>().latestOpenView = null;
+            getIt<HomeStackManager>().setPlugin(BlankPagePlugin());
+          }
+        },
+        (err) => Log.error(err),
+      );
+    });
   }
 }

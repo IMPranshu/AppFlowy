@@ -1,32 +1,40 @@
-use crate::entities::{GroupChangesetPB, InsertedRowPB, RowPB};
-use crate::services::cell::insert_select_option_cell;
-use crate::services::field::SelectOptionCellDataPB;
-use crate::services::group::configuration::GenericGroupConfiguration;
-use crate::services::group::Group;
-
+use crate::entities::{FieldType, GroupChangesetPB, InsertedRowPB, RowPB};
+use crate::services::cell::{insert_checkbox_cell, insert_select_option_cell};
+use crate::services::field::{SelectOptionCellDataPB, SelectOptionPB, CHECK};
+use crate::services::group::configuration::GroupContext;
 use crate::services::group::controller::MoveGroupRowContext;
-use flowy_grid_data_model::revision::{RowRevision, SelectOptionGroupConfigurationRevision};
+use crate::services::group::{GeneratedGroup, Group};
+use flowy_grid_data_model::revision::{
+    CellRevision, FieldRevision, GroupRevision, RowRevision, SelectOptionGroupConfigurationRevision,
+};
 
-pub type SelectOptionGroupConfiguration = GenericGroupConfiguration<SelectOptionGroupConfigurationRevision>;
+pub type SelectOptionGroupContext = GroupContext<SelectOptionGroupConfigurationRevision>;
 
-pub fn add_row(
+pub fn add_select_option_row(
     group: &mut Group,
     cell_data: &SelectOptionCellDataPB,
     row_rev: &RowRevision,
 ) -> Option<GroupChangesetPB> {
     let mut changeset = GroupChangesetPB::new(group.id.clone());
-    cell_data.select_options.iter().for_each(|option| {
-        if option.id == group.id {
-            if !group.contains_row(&row_rev.id) {
-                let row_pb = RowPB::from(row_rev);
-                changeset.inserted_rows.push(InsertedRowPB::new(row_pb.clone()));
-                group.add_row(row_pb);
-            }
-        } else if group.contains_row(&row_rev.id) {
+    if cell_data.select_options.is_empty() {
+        if group.contains_row(&row_rev.id) {
             changeset.deleted_rows.push(row_rev.id.clone());
             group.remove_row(&row_rev.id);
         }
-    });
+    } else {
+        cell_data.select_options.iter().for_each(|option| {
+            if option.id == group.id {
+                if !group.contains_row(&row_rev.id) {
+                    let row_pb = RowPB::from(row_rev);
+                    changeset.inserted_rows.push(InsertedRowPB::new(row_pb.clone()));
+                    group.add_row(row_pb);
+                }
+            } else if group.contains_row(&row_rev.id) {
+                changeset.deleted_rows.push(row_rev.id.clone());
+                group.remove_row(&row_rev.id);
+            }
+        });
+    }
 
     if changeset.is_empty() {
         None
@@ -35,7 +43,7 @@ pub fn add_row(
     }
 }
 
-pub fn remove_row(
+pub fn remove_select_option_row(
     group: &mut Group,
     cell_data: &SelectOptionCellDataPB,
     row_rev: &RowRevision,
@@ -55,11 +63,7 @@ pub fn remove_row(
     }
 }
 
-pub fn move_select_option_row(
-    group: &mut Group,
-    _cell_data: &SelectOptionCellDataPB,
-    context: &mut MoveGroupRowContext,
-) -> Option<GroupChangesetPB> {
+pub fn move_group_row(group: &mut Group, context: &mut MoveGroupRowContext) -> Option<GroupChangesetPB> {
     let mut changeset = GroupChangesetPB::new(group.id.clone());
     let MoveGroupRowContext {
         row_rev,
@@ -106,10 +110,16 @@ pub fn move_select_option_row(
 
         // Update the corresponding row's cell content.
         if from_index.is_none() {
-            tracing::debug!("Mark row:{} belong to group:{}", row_rev.id, group.id);
-            let cell_rev = insert_select_option_cell(group.id.clone(), field_rev);
-            row_changeset.cell_by_field_id.insert(field_rev.id.clone(), cell_rev);
-            changeset.updated_rows.push(RowPB::from(*row_rev));
+            let cell_rev = make_inserted_cell_rev(&group.id, field_rev);
+            if let Some(cell_rev) = cell_rev {
+                tracing::debug!(
+                    "Update content of the cell in the row:{} to group:{}",
+                    row_rev.id,
+                    group.id
+                );
+                row_changeset.cell_by_field_id.insert(field_rev.id.clone(), cell_rev);
+                changeset.updated_rows.push(RowPB::from(*row_rev));
+            }
         }
     }
     if changeset.is_empty() {
@@ -117,4 +127,41 @@ pub fn move_select_option_row(
     } else {
         Some(changeset)
     }
+}
+
+pub fn make_inserted_cell_rev(group_id: &str, field_rev: &FieldRevision) -> Option<CellRevision> {
+    let field_type: FieldType = field_rev.ty.into();
+    match field_type {
+        FieldType::SingleSelect => {
+            let cell_rev = insert_select_option_cell(group_id.to_owned(), field_rev);
+            Some(cell_rev)
+        }
+        FieldType::MultiSelect => {
+            let cell_rev = insert_select_option_cell(group_id.to_owned(), field_rev);
+            Some(cell_rev)
+        }
+        FieldType::Checkbox => {
+            let cell_rev = insert_checkbox_cell(group_id == CHECK, field_rev);
+            Some(cell_rev)
+        }
+        _ => {
+            tracing::warn!("Unknown field type: {:?}", field_type);
+            None
+        }
+    }
+}
+pub fn generate_select_option_groups(
+    _field_id: &str,
+    _group_ctx: &SelectOptionGroupContext,
+    options: &[SelectOptionPB],
+) -> Vec<GeneratedGroup> {
+    let groups = options
+        .iter()
+        .map(|option| GeneratedGroup {
+            group_rev: GroupRevision::new(option.id.clone(), option.name.clone()),
+            filter_content: option.id.clone(),
+        })
+        .collect();
+
+    groups
 }

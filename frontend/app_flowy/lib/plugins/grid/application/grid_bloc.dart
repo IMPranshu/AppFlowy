@@ -7,6 +7,7 @@ import 'package:flowy_sdk/protobuf/flowy-grid/protobuf.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:freezed_annotation/freezed_annotation.dart';
 import 'block/block_cache.dart';
+import 'field/field_controller.dart';
 import 'grid_data_controller.dart';
 import 'row/row_cache.dart';
 import 'dart:collection';
@@ -40,6 +41,7 @@ class GridBloc extends Bloc<GridEvent, GridState> {
           didReceiveRowUpdate: (newRowInfos, reason) {
             emit(state.copyWith(
               rowInfos: newRowInfos,
+              rowCount: newRowInfos.length,
               reason: reason,
             ));
           },
@@ -101,7 +103,7 @@ class GridEvent with _$GridEvent {
     RowsChangedReason listState,
   ) = _DidReceiveRowUpdate;
   const factory GridEvent.didReceiveFieldUpdate(
-    UnmodifiableListView<FieldPB> fields,
+    UnmodifiableListView<GridFieldContext> fields,
   ) = _DidReceiveFieldUpdate;
 
   const factory GridEvent.didReceiveGridUpdate(
@@ -116,6 +118,7 @@ class GridState with _$GridState {
     required Option<GridPB> grid,
     required GridFieldEquatable fields,
     required List<RowInfo> rowInfos,
+    required int rowCount,
     required GridLoadingState loadingState,
     required RowsChangedReason reason,
   }) = _GridState;
@@ -123,6 +126,7 @@ class GridState with _$GridState {
   factory GridState.initial(String gridId) => GridState(
         fields: GridFieldEquatable(UnmodifiableListView([])),
         rowInfos: [],
+        rowCount: 0,
         grid: none(),
         gridId: gridId,
         loadingState: const _Loading(),
@@ -138,9 +142,9 @@ class GridLoadingState with _$GridLoadingState {
 }
 
 class GridFieldEquatable extends Equatable {
-  final UnmodifiableListView<FieldPB> _fields;
+  final UnmodifiableListView<GridFieldContext> _fields;
   const GridFieldEquatable(
-    UnmodifiableListView<FieldPB> fields,
+    UnmodifiableListView<GridFieldContext> fields,
   ) : _fields = fields;
 
   @override
@@ -157,5 +161,6 @@ class GridFieldEquatable extends Equatable {
     ];
   }
 
-  UnmodifiableListView<FieldPB> get value => UnmodifiableListView(_fields);
+  UnmodifiableListView<GridFieldContext> get value =>
+      UnmodifiableListView(_fields);
 }

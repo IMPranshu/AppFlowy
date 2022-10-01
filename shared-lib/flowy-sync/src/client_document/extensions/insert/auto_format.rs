@@ -1,7 +1,8 @@
 use crate::{client_document::InsertExt, util::is_whitespace};
+use lib_ot::core::Attributes;
 use lib_ot::{
-    core::{count_utf16_code_units, DeltaBuilder, DeltaIterator},
-    rich_text::{plain_attributes, RichTextAttribute, RichTextAttributes, RichTextDelta},
+    core::{count_utf16_code_units, OperationBuilder, OperationIterator},
+    text_delta::{empty_attributes, BuildInTextAttribute, TextDelta},
 };
 use std::cmp::min;
 use url::Url;
@@ -12,12 +13,12 @@ impl InsertExt for AutoFormatExt {
         "AutoFormatExt"
     }
 
-    fn apply(&self, delta: &RichTextDelta, replace_len: usize, text: &str, index: usize) -> Option<RichTextDelta> {
+    fn apply(&self, delta: &TextDelta, replace_len: usize, text: &str, index: usize) -> Option<TextDelta> {
         // enter whitespace to trigger auto format
         if !is_whitespace(text) {
             return None;
         }
-        let mut iter = DeltaIterator::new(delta);
+        let mut iter = OperationIterator::new(delta);
         if let Some(prev) = iter.next_op_with_len(index) {
             match AutoFormat::parse(prev.get_data()) {
                 None => {}
@@ -36,12 +37,12 @@ impl InsertExt for AutoFormatExt {
                     });
 
                     let next_attributes = match iter.next_op() {
-                        None => plain_attributes(),
+                        None => empty_attributes(),
                         Some(op) => op.get_attributes(),
                     };
 
                     return Some(
-                        DeltaBuilder::new()
+                        OperationBuilder::new()
                             .retain(index + replace_len - min(index, format_len))
                             .retain_with_attributes(format_len, format_attributes)
                             .insert_with_attributes(text, next_attributes)
@@ -60,9 +61,9 @@ pub enum AutoFormatter {
 }
 
 impl AutoFormatter {
-    pub fn to_attributes(&self) -> RichTextAttributes {
+    pub fn to_attributes(&self) -> Attributes {
         match self {
-            AutoFormatter::Url(url) => RichTextAttribute::Link(url.as_str()).into(),
+            AutoFormatter::Url(url) => BuildInTextAttribute::Link(url.as_str()).into(),
         }
     }
 

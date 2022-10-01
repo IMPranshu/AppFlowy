@@ -1,55 +1,56 @@
 use super::cursor::*;
-use crate::core::delta::{Delta, NEW_LINE};
+use crate::core::delta::operation::{Operation, OperationAttributes};
+use crate::core::delta::{Operations, NEW_LINE};
 use crate::core::interval::Interval;
-use crate::core::operation::{Attributes, Operation};
-use crate::rich_text::RichTextAttributes;
+use crate::core::Attributes;
+
 use std::ops::{Deref, DerefMut};
 
 pub(crate) const MAX_IV_LEN: usize = i32::MAX as usize;
 
-/// [DeltaIterator] is used to iterate over a delta.
+/// [OperationIterator] is used to iterate over the operations.
 /// # Examples
 ///
 /// You could check [this](https://appflowy.gitbook.io/docs/essential-documentation/contribute-to-appflowy/architecture/backend/delta) out for more information.
 ///
 /// ```
-///  use lib_ot::core::{DeltaIterator, Interval, Operation};
-///  use lib_ot::rich_text::RichTextDelta;
-///  let mut delta = RichTextDelta::default();
+///  use lib_ot::core::{OperationIterator, Interval, Operation};
+///  use lib_ot::text_delta::TextDelta;
+///  let mut delta = TextDelta::default();
 ///  delta.add(Operation::insert("123"));
 ///  delta.add(Operation::insert("4"));
 ///  assert_eq!(
-///     DeltaIterator::from_interval(&delta, Interval::new(0, 2)).ops(),
+///     OperationIterator::from_interval(&delta, Interval::new(0, 2)).ops(),
 ///     vec![Operation::insert("12")]
 ///  );
 ///
 ///  assert_eq!(
-///     DeltaIterator::from_interval(&delta, Interval::new(1, 3)).ops(),
+///     OperationIterator::from_interval(&delta, Interval::new(1, 3)).ops(),
 ///     vec![Operation::insert("23")]
 ///  );
 /// ```
-pub struct DeltaIterator<'a, T: Attributes> {
-    cursor: DeltaCursor<'a, T>,
+pub struct OperationIterator<'a, T: OperationAttributes> {
+    cursor: OperationsCursor<'a, T>,
 }
 
-impl<'a, T> DeltaIterator<'a, T>
+impl<'a, T> OperationIterator<'a, T>
 where
-    T: Attributes,
+    T: OperationAttributes,
 {
-    pub fn new(delta: &'a Delta<T>) -> Self {
+    pub fn new(delta: &'a Operations<T>) -> Self {
         let interval = Interval::new(0, MAX_IV_LEN);
         Self::from_interval(delta, interval)
     }
 
-    pub fn from_offset(delta: &'a Delta<T>, offset: usize) -> Self {
+    pub fn from_offset(delta: &'a Operations<T>, offset: usize) -> Self {
         let interval = Interval::new(0, MAX_IV_LEN);
         let mut iter = Self::from_interval(delta, interval);
         iter.seek::<Utf16CodeUnitMetric>(offset);
         iter
     }
 
-    pub fn from_interval(delta: &'a Delta<T>, interval: Interval) -> Self {
-        let cursor = DeltaCursor::new(delta, interval);
+    pub fn from_interval(delta: &'a Operations<T>, interval: Interval) -> Self {
+        let cursor = OperationsCursor::new(delta, interval);
         Self { cursor }
     }
 
@@ -122,9 +123,9 @@ where
     }
 }
 
-impl<'a, T> Iterator for DeltaIterator<'a, T>
+impl<'a, T> Iterator for OperationIterator<'a, T>
 where
-    T: Attributes,
+    T: OperationAttributes,
 {
     type Item = Operation<T>;
     fn next(&mut self) -> Option<Self::Item> {
@@ -132,8 +133,8 @@ where
     }
 }
 
-pub fn is_empty_line_at_index(delta: &Delta<RichTextAttributes>, index: usize) -> bool {
-    let mut iter = DeltaIterator::new(delta);
+pub fn is_empty_line_at_index(delta: &Operations<Attributes>, index: usize) -> bool {
+    let mut iter = OperationIterator::new(delta);
     let (prev, next) = (iter.next_op_with_len(index), iter.next_op());
     if prev.is_none() {
         return true;
@@ -148,21 +149,21 @@ pub fn is_empty_line_at_index(delta: &Delta<RichTextAttributes>, index: usize) -
     OpNewline::parse(&prev).is_end() && OpNewline::parse(&next).is_start()
 }
 
-pub struct AttributesIter<'a, T: Attributes> {
-    delta_iter: DeltaIterator<'a, T>,
+pub struct AttributesIter<'a, T: OperationAttributes> {
+    delta_iter: OperationIterator<'a, T>,
 }
 
 impl<'a, T> AttributesIter<'a, T>
 where
-    T: Attributes,
+    T: OperationAttributes,
 {
-    pub fn new(delta: &'a Delta<T>) -> Self {
+    pub fn new(delta: &'a Operations<T>) -> Self {
         let interval = Interval::new(0, usize::MAX);
         Self::from_interval(delta, interval)
     }
 
-    pub fn from_interval(delta: &'a Delta<T>, interval: Interval) -> Self {
-        let delta_iter = DeltaIterator::from_interval(delta, interval);
+    pub fn from_interval(delta: &'a Operations<T>, interval: Interval) -> Self {
+        let delta_iter = OperationIterator::from_interval(delta, interval);
         Self { delta_iter }
     }
 
@@ -176,9 +177,9 @@ where
 
 impl<'a, T> Deref for AttributesIter<'a, T>
 where
-    T: Attributes,
+    T: OperationAttributes,
 {
-    type Target = DeltaIterator<'a, T>;
+    type Target = OperationIterator<'a, T>;
 
     fn deref(&self) -> &Self::Target {
         &self.delta_iter
@@ -187,7 +188,7 @@ where
 
 impl<'a, T> DerefMut for AttributesIter<'a, T>
 where
-    T: Attributes,
+    T: OperationAttributes,
 {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.delta_iter
@@ -196,7 +197,7 @@ where
 
 impl<'a, T> Iterator for AttributesIter<'a, T>
 where
-    T: Attributes,
+    T: OperationAttributes,
 {
     type Item = (usize, T);
     fn next(&mut self) -> Option<Self::Item> {
@@ -234,7 +235,7 @@ pub enum OpNewline {
 }
 
 impl OpNewline {
-    pub fn parse<T: Attributes>(op: &Operation<T>) -> OpNewline {
+    pub fn parse<T: OperationAttributes>(op: &Operation<T>) -> OpNewline {
         let s = op.get_data();
 
         if s == NEW_LINE {

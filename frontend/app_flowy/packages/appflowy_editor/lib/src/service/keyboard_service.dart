@@ -22,6 +22,9 @@ abstract class AppFlowyKeyboardService {
   /// Processes shortcut key input.
   KeyEventResult onKey(RawKeyEvent event);
 
+  /// Gets the shortcut events
+  List<ShortcutEvent> get shortcutEvents;
+
   /// Enables shortcuts service.
   void enable();
 
@@ -35,23 +38,20 @@ abstract class AppFlowyKeyboardService {
   void disable();
 }
 
-typedef AppFlowyKeyEventHandler = KeyEventResult Function(
-  EditorState editorState,
-  RawKeyEvent event,
-);
-
 /// Process keyboard events
 class AppFlowyKeyboard extends StatefulWidget {
   const AppFlowyKeyboard({
     Key? key,
-    required this.handlers,
+    this.editable = true,
+    required this.shortcutEvents,
     required this.editorState,
     required this.child,
   }) : super(key: key);
 
   final EditorState editorState;
   final Widget child;
-  final List<AppFlowyKeyEventHandler> handlers;
+  final List<ShortcutEvent> shortcutEvents;
+  final bool editable;
 
   @override
   State<AppFlowyKeyboard> createState() => _AppFlowyKeyboardState();
@@ -62,6 +62,9 @@ class _AppFlowyKeyboardState extends State<AppFlowyKeyboard>
   final FocusNode _focusNode = FocusNode(debugLabel: 'flowy_keyboard_service');
 
   bool isFocus = true;
+
+  @override
+  List<ShortcutEvent> get shortcutEvents => widget.shortcutEvents;
 
   @override
   Widget build(BuildContext context) {
@@ -89,8 +92,12 @@ class _AppFlowyKeyboardState extends State<AppFlowyKeyboard>
 
   @override
   void enable() {
-    isFocus = true;
-    _focusNode.requestFocus();
+    if (widget.editable) {
+      isFocus = true;
+      _focusNode.requestFocus();
+    } else {
+      disable();
+    }
   }
 
   @override
@@ -111,16 +118,16 @@ class _AppFlowyKeyboardState extends State<AppFlowyKeyboard>
       return KeyEventResult.ignored;
     }
 
-    for (final handler in widget.handlers) {
-      KeyEventResult result = handler(widget.editorState, event);
-
-      switch (result) {
-        case KeyEventResult.handled:
+    // TODO: use cache to optimize the searching time.
+    for (final shortcutEvent in widget.shortcutEvents) {
+      if (shortcutEvent.keybindings.containsKeyEvent(event)) {
+        final result = shortcutEvent.handler(widget.editorState, event);
+        if (result == KeyEventResult.handled) {
           return KeyEventResult.handled;
-        case KeyEventResult.skipRemainingHandlers:
+        } else if (result == KeyEventResult.skipRemainingHandlers) {
           return KeyEventResult.skipRemainingHandlers;
-        case KeyEventResult.ignored:
-          continue;
+        }
+        continue;
       }
     }
 
@@ -129,6 +136,10 @@ class _AppFlowyKeyboardState extends State<AppFlowyKeyboard>
 
   void _onFocusChange(bool value) {
     Log.keyboard.debug('on keyboard event focus change $value');
+    isFocus = value;
+    if (!value) {
+      widget.editorState.service.selectionService.clearCursor();
+    }
   }
 
   KeyEventResult _onKey(FocusNode node, RawKeyEvent event) {

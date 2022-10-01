@@ -1,12 +1,13 @@
 import 'package:appflowy_editor/src/document/node.dart';
 import 'package:appflowy_editor/src/editor_state.dart';
 import 'package:appflowy_editor/src/infra/flowy_svg.dart';
+import 'package:appflowy_editor/src/render/rich_text/built_in_text_widget.dart';
 import 'package:appflowy_editor/src/render/rich_text/default_selectable.dart';
 import 'package:appflowy_editor/src/render/rich_text/flowy_rich_text.dart';
-import 'package:appflowy_editor/src/render/rich_text/rich_text_style.dart';
 import 'package:appflowy_editor/src/render/selection/selectable.dart';
 import 'package:appflowy_editor/src/service/render_plugin_service.dart';
 import 'package:flutter/material.dart';
+import 'package:appflowy_editor/src/extensions/text_style_extension.dart';
 
 class BulletedListTextNodeWidgetBuilder extends NodeWidgetBuilder<TextNode> {
   @override
@@ -24,14 +25,16 @@ class BulletedListTextNodeWidgetBuilder extends NodeWidgetBuilder<TextNode> {
       });
 }
 
-class BulletedListTextNodeWidget extends StatefulWidget {
+class BulletedListTextNodeWidget extends BuiltInTextWidget {
   const BulletedListTextNodeWidget({
     Key? key,
     required this.textNode,
     required this.editorState,
   }) : super(key: key);
 
+  @override
   final TextNode textNode;
+  @override
   final EditorState editorState;
 
   @override
@@ -42,47 +45,53 @@ class BulletedListTextNodeWidget extends StatefulWidget {
 // customize
 
 class _BulletedListTextNodeWidgetState extends State<BulletedListTextNodeWidget>
-    with Selectable, DefaultSelectable {
+    with
+        SelectableMixin,
+        DefaultSelectable,
+        BuiltInStyleMixin,
+        BuiltInTextWidgetMixin {
   @override
   final iconKey = GlobalKey();
 
   final _richTextKey = GlobalKey(debugLabel: 'bulleted_list_text');
-  final _iconWidth = 20.0;
-  final _iconRightPadding = 5.0;
 
   @override
-  Selectable<StatefulWidget> get forward =>
-      _richTextKey.currentState as Selectable;
+  SelectableMixin<StatefulWidget> get forward =>
+      _richTextKey.currentState as SelectableMixin;
 
   @override
-  Widget build(BuildContext context) {
-    final topPadding = RichTextStyle.fromTextNode(widget.textNode).topPadding;
+  Offset get baseOffset {
+    return super.baseOffset.translate(0, padding.top);
+  }
 
-    return SizedBox(
-      width: defaultMaxTextNodeWidth,
-      child: Padding(
-        padding: EdgeInsets.only(bottom: defaultLinePadding),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            FlowySvg(
-              key: iconKey,
-              width: _iconWidth,
-              height: _iconWidth,
-              padding:
-                  EdgeInsets.only(top: topPadding, right: _iconRightPadding),
-              name: 'point',
+  @override
+  Widget buildWithSingle(BuildContext context) {
+    return Padding(
+      padding: padding,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          FlowySvg(
+            key: iconKey,
+            width: iconSize?.width,
+            height: iconSize?.height,
+            padding: iconPadding,
+            name: 'point',
+          ),
+          Flexible(
+            child: FlowyRichText(
+              key: _richTextKey,
+              placeholderText: 'List',
+              textSpanDecorator: (textSpan) =>
+                  textSpan.updateTextStyle(textStyle),
+              placeholderTextSpanDecorator: (textSpan) =>
+                  textSpan.updateTextStyle(textStyle),
+              lineHeight: widget.editorState.editorStyle.textStyle.lineHeight,
+              textNode: widget.textNode,
+              editorState: widget.editorState,
             ),
-            Expanded(
-              child: FlowyRichText(
-                key: _richTextKey,
-                placeholderText: 'List',
-                textNode: widget.textNode,
-                editorState: widget.editorState,
-              ),
-            ),
-          ],
-        ),
+          )
+        ],
       ),
     );
   }

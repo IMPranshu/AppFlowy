@@ -1,10 +1,8 @@
 use crate::{client_document::InsertExt, util::is_newline};
+use lib_ot::core::Attributes;
 use lib_ot::{
-    core::{DeltaBuilder, DeltaIterator, NEW_LINE},
-    rich_text::{
-        attributes_except_header, plain_attributes, RichTextAttribute, RichTextAttributeKey, RichTextAttributes,
-        RichTextDelta,
-    },
+    core::{OperationBuilder, OperationIterator, NEW_LINE},
+    text_delta::{attributes_except_header, empty_attributes, BuildInTextAttributeKey, TextDelta},
 };
 
 pub struct PreserveBlockFormatOnInsert {}
@@ -13,12 +11,12 @@ impl InsertExt for PreserveBlockFormatOnInsert {
         "PreserveBlockFormatOnInsert"
     }
 
-    fn apply(&self, delta: &RichTextDelta, replace_len: usize, text: &str, index: usize) -> Option<RichTextDelta> {
+    fn apply(&self, delta: &TextDelta, replace_len: usize, text: &str, index: usize) -> Option<TextDelta> {
         if !is_newline(text) {
             return None;
         }
 
-        let mut iter = DeltaIterator::from_offset(delta, index);
+        let mut iter = OperationIterator::from_offset(delta, index);
         match iter.next_op_with_newline() {
             None => {}
             Some((newline_op, offset)) => {
@@ -28,16 +26,16 @@ impl InsertExt for PreserveBlockFormatOnInsert {
                     return None;
                 }
 
-                let mut reset_attribute = RichTextAttributes::new();
-                if newline_attributes.contains_key(&RichTextAttributeKey::Header) {
-                    reset_attribute.add(RichTextAttribute::Header(1));
+                let mut reset_attribute = Attributes::new();
+                if newline_attributes.contains_key(BuildInTextAttributeKey::Header.as_ref()) {
+                    reset_attribute.insert(BuildInTextAttributeKey::Header, 1);
                 }
 
                 let lines: Vec<_> = text.split(NEW_LINE).collect();
-                let mut new_delta = DeltaBuilder::new().retain(index + replace_len).build();
+                let mut new_delta = OperationBuilder::new().retain(index + replace_len).build();
                 lines.iter().enumerate().for_each(|(i, line)| {
                     if !line.is_empty() {
-                        new_delta.insert(line, plain_attributes());
+                        new_delta.insert(line, empty_attributes());
                     }
 
                     if i == 0 {
@@ -49,9 +47,9 @@ impl InsertExt for PreserveBlockFormatOnInsert {
                     }
                 });
                 if !reset_attribute.is_empty() {
-                    new_delta.retain(offset, plain_attributes());
+                    new_delta.retain(offset, empty_attributes());
                     let len = newline_op.get_data().find(NEW_LINE).unwrap();
-                    new_delta.retain(len, plain_attributes());
+                    new_delta.retain(len, empty_attributes());
                     new_delta.retain(1, reset_attribute);
                 }
 

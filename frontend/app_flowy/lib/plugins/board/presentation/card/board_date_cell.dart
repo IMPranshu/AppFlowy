@@ -8,9 +8,11 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'define.dart';
 
 class BoardDateCell extends StatefulWidget {
+  final String groupId;
   final GridCellControllerBuilder cellControllerBuilder;
 
   const BoardDateCell({
+    required this.groupId,
     required this.cellControllerBuilder,
     Key? key,
   }) : super(key: key);
@@ -37,6 +39,7 @@ class _BoardDateCellState extends State<BoardDateCell> {
     return BlocProvider.value(
       value: _cellBloc,
       child: BlocBuilder<BoardDateCellBloc, BoardDateCellState>(
+        buildWhen: (previous, current) => previous.dateStr != current.dateStr,
         builder: (context, state) {
           if (state.dateStr.isEmpty) {
             return const SizedBox();
@@ -45,7 +48,7 @@ class _BoardDateCellState extends State<BoardDateCell> {
               alignment: Alignment.centerLeft,
               child: Padding(
                 padding: EdgeInsets.symmetric(
-                  vertical: BoardSizes.cardCellVPading,
+                  vertical: BoardSizes.cardCellVPadding,
                 ),
                 child: FlowyText.regular(
                   state.dateStr,

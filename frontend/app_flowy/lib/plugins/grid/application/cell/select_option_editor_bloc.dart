@@ -1,12 +1,14 @@
 import 'dart:async';
+
+import 'package:app_flowy/plugins/grid/application/cell/cell_service/cell_service.dart';
+import 'package:collection/collection.dart';
 import 'package:dartz/dartz.dart';
 import 'package:flowy_sdk/log.dart';
 import 'package:flowy_sdk/protobuf/flowy-grid/select_option.pb.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:freezed_annotation/freezed_annotation.dart';
-import 'package:app_flowy/plugins/grid/application/cell/cell_service/cell_service.dart';
+
 import 'select_option_service.dart';
-import 'package:collection/collection.dart';
 
 part 'select_option_editor_bloc.freezed.dart';
 
@@ -52,6 +54,9 @@ class SelectOptionCellEditorBloc
           selectOption: (_SelectOption value) {
             _onSelectOption(value.optionId);
           },
+          trySelectOption: (_TrySelectOption value) {
+            _trySelectOption(value.optionName, emit);
+          },
           filterOption: (_SelectOptionFilter value) {
             _filterOption(value.optionName, emit);
           },
@@ -96,6 +101,36 @@ class SelectOptionCellEditorBloc
     } else {
       _selectOptionService.select(optionId: optionId);
     }
+  }
+
+  void _trySelectOption(
+      String optionName, Emitter<SelectOptionEditorState> emit) async {
+    SelectOptionPB? matchingOption;
+    bool optionExistsButSelected = false;
+
+    for (final option in state.options) {
+      if (option.name.toLowerCase() == optionName.toLowerCase()) {
+        if (!state.selectedOptions.contains(option)) {
+          matchingOption = option;
+          break;
+        } else {
+          optionExistsButSelected = true;
+        }
+      }
+    }
+
+    // if there isn't a matching option at all, then create it
+    if (matchingOption == null && !optionExistsButSelected) {
+      _createOption(optionName);
+    }
+
+    // if there is an unselected matching option, select it
+    if (matchingOption != null) {
+      _selectOptionService.select(optionId: matchingOption.id);
+    }
+
+    // clear the filter
+    emit(state.copyWith(filter: none()));
   }
 
   void _filterOption(String optionName, Emitter<SelectOptionEditorState> emit) {
@@ -144,6 +179,8 @@ class SelectOptionCellEditorBloc
 
           return name.contains(lFilter);
         });
+      } else {
+        createOption = none();
       }
     });
 
@@ -183,6 +220,8 @@ class SelectOptionEditorEvent with _$SelectOptionEditorEvent {
       _DeleteOption;
   const factory SelectOptionEditorEvent.filterOption(String optionName) =
       _SelectOptionFilter;
+  const factory SelectOptionEditorEvent.trySelectOption(String optionName) =
+      _TrySelectOption;
 }
 
 @freezed

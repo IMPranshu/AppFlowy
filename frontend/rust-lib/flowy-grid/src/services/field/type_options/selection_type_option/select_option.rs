@@ -5,7 +5,7 @@ use bytes::Bytes;
 use flowy_derive::{ProtoBuf, ProtoBuf_Enum};
 use flowy_error::{internal_error, ErrorCode, FlowyResult};
 use flowy_grid_data_model::parser::NotEmptyStr;
-use flowy_grid_data_model::revision::{FieldRevision, TypeOptionDataEntry};
+use flowy_grid_data_model::revision::{FieldRevision, TypeOptionDataFormat};
 use nanoid::nanoid;
 use serde::{Deserialize, Serialize};
 
@@ -75,7 +75,7 @@ pub fn make_selected_select_options(
     }
 }
 
-pub trait SelectOptionOperation: TypeOptionDataEntry + Send + Sync {
+pub trait SelectOptionOperation: TypeOptionDataFormat + Send + Sync {
     fn insert_option(&mut self, new_option: SelectOptionPB) {
         let options = self.mut_options();
         if let Some(index) = options
@@ -120,6 +120,21 @@ where
     ) -> FlowyResult<CellBytes> {
         CellBytes::from(self.selected_select_option(cell_data))
     }
+
+    fn display_string(
+        &self,
+        cell_data: CellData<SelectOptionIds>,
+        _decoded_field_type: &FieldType,
+        _field_rev: &FieldRevision,
+    ) -> FlowyResult<String> {
+        Ok(self
+            .selected_select_option(cell_data)
+            .select_options
+            .into_iter()
+            .map(|option| option.name)
+            .collect::<Vec<String>>()
+            .join(SELECTION_IDS_SEPARATOR))
+    }
 }
 
 pub fn select_option_operation(field_rev: &FieldRevision) -> FlowyResult<Box<dyn SelectOptionOperation>> {
@@ -154,9 +169,14 @@ pub fn select_option_color_from_index(index: usize) -> SelectOptionColorPB {
         _ => SelectOptionColorPB::Purple,
     }
 }
+
+#[derive(Default)]
 pub struct SelectOptionIds(Vec<String>);
 
 impl SelectOptionIds {
+    pub fn new() -> Self {
+        Self::default()
+    }
     pub fn into_inner(self) -> Vec<String> {
         self.0
     }
@@ -178,6 +198,12 @@ impl std::convert::From<String> for SelectOptionIds {
             .map(|id| id.to_string())
             .collect::<Vec<String>>();
         Self(ids)
+    }
+}
+
+impl ToString for SelectOptionIds {
+    fn to_string(&self) -> String {
+        self.0.join(SELECTION_IDS_SEPARATOR)
     }
 }
 

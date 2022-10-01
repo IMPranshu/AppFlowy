@@ -8,12 +8,10 @@ use derive_more::Display;
 use flowy_sync::client_document::{ClientDocument, InitialDocumentText};
 use lib_ot::{
     core::*,
-    rich_text::{RichTextAttribute, RichTextAttributes, RichTextDelta},
+    text_delta::{BuildInTextAttribute, TextDelta},
 };
 use rand::{prelude::*, Rng as WrappedRng};
 use std::{sync::Once, time::Duration};
-
-const LEVEL: &str = "info";
 
 #[derive(Clone, Debug, Display)]
 pub enum TestOp {
@@ -83,8 +81,8 @@ pub enum TestOp {
 
 pub struct TestBuilder {
     documents: Vec<ClientDocument>,
-    deltas: Vec<Option<RichTextDelta>>,
-    primes: Vec<Option<RichTextDelta>>,
+    deltas: Vec<Option<TextDelta>>,
+    primes: Vec<Option<TextDelta>>,
 }
 
 impl TestBuilder {
@@ -92,7 +90,8 @@ impl TestBuilder {
         static INIT: Once = Once::new();
         INIT.call_once(|| {
             let _ = color_eyre::install();
-            std::env::set_var("RUST_LOG", LEVEL);
+            // let subscriber = FmtSubscriber::builder().with_max_level(Level::INFO).finish();
+            // tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
         });
 
         Self {
@@ -127,11 +126,11 @@ impl TestBuilder {
             TestOp::InsertBold(delta_i, s, iv) => {
                 let document = &mut self.documents[*delta_i];
                 document.insert(iv.start, s).unwrap();
-                document.format(*iv, RichTextAttribute::Bold(true)).unwrap();
+                document.format(*iv, BuildInTextAttribute::Bold(true)).unwrap();
             }
             TestOp::Bold(delta_i, iv, enable) => {
                 let document = &mut self.documents[*delta_i];
-                let attribute = RichTextAttribute::Bold(*enable);
+                let attribute = BuildInTextAttribute::Bold(*enable);
                 let delta = document.format(*iv, attribute).unwrap();
                 tracing::trace!("Bold delta: {}", delta.json_str());
                 self.deltas.insert(*delta_i, Some(delta));
@@ -139,8 +138,8 @@ impl TestBuilder {
             TestOp::Italic(delta_i, iv, enable) => {
                 let document = &mut self.documents[*delta_i];
                 let attribute = match *enable {
-                    true => RichTextAttribute::Italic(true),
-                    false => RichTextAttribute::Italic(false),
+                    true => BuildInTextAttribute::Italic(true),
+                    false => BuildInTextAttribute::Italic(false),
                 };
                 let delta = document.format(*iv, attribute).unwrap();
                 tracing::trace!("Italic delta: {}", delta.json_str());
@@ -148,21 +147,21 @@ impl TestBuilder {
             }
             TestOp::Header(delta_i, iv, level) => {
                 let document = &mut self.documents[*delta_i];
-                let attribute = RichTextAttribute::Header(*level);
+                let attribute = BuildInTextAttribute::Header(*level);
                 let delta = document.format(*iv, attribute).unwrap();
                 tracing::trace!("Header delta: {}", delta.json_str());
                 self.deltas.insert(*delta_i, Some(delta));
             }
             TestOp::Link(delta_i, iv, link) => {
                 let document = &mut self.documents[*delta_i];
-                let attribute = RichTextAttribute::Link(link.to_owned());
+                let attribute = BuildInTextAttribute::Link(link.to_owned());
                 let delta = document.format(*iv, attribute).unwrap();
                 tracing::trace!("Link delta: {}", delta.json_str());
                 self.deltas.insert(*delta_i, Some(delta));
             }
             TestOp::Bullet(delta_i, iv, enable) => {
                 let document = &mut self.documents[*delta_i];
-                let attribute = RichTextAttribute::Bullet(*enable);
+                let attribute = BuildInTextAttribute::Bullet(*enable);
                 let delta = document.format(*iv, attribute).unwrap();
                 tracing::debug!("Bullet delta: {}", delta.json_str());
 
@@ -227,8 +226,8 @@ impl TestBuilder {
 
             TestOp::AssertDocJson(delta_i, expected) => {
                 let delta_json = self.documents[*delta_i].delta_str();
-                let expected_delta: RichTextDelta = serde_json::from_str(expected).unwrap();
-                let target_delta: RichTextDelta = serde_json::from_str(&delta_json).unwrap();
+                let expected_delta: TextDelta = serde_json::from_str(expected).unwrap();
+                let target_delta: TextDelta = serde_json::from_str(&delta_json).unwrap();
 
                 if expected_delta != target_delta {
                     log::error!("✅ expect: {}", expected,);
@@ -239,8 +238,8 @@ impl TestBuilder {
 
             TestOp::AssertPrimeJson(doc_i, expected) => {
                 let prime_json = self.primes[*doc_i].as_ref().unwrap().json_str();
-                let expected_prime: RichTextDelta = serde_json::from_str(expected).unwrap();
-                let target_prime: RichTextDelta = serde_json::from_str(&prime_json).unwrap();
+                let expected_prime: TextDelta = serde_json::from_str(expected).unwrap();
+                let target_prime: TextDelta = serde_json::from_str(&prime_json).unwrap();
 
                 if expected_prime != target_prime {
                     log::error!("✅ expect prime: {}", expected,);
@@ -298,8 +297,8 @@ impl Rng {
             .collect()
     }
 
-    pub fn gen_delta(&mut self, s: &str) -> RichTextDelta {
-        let mut delta = RichTextDelta::default();
+    pub fn gen_delta(&mut self, s: &str) -> TextDelta {
+        let mut delta = TextDelta::default();
         let s = OTString::from(s);
         loop {
             let left = s.utf16_len() - delta.utf16_base_len;
@@ -313,18 +312,18 @@ impl Rng {
             };
             match self.0.gen_range(0.0..1.0) {
                 f if f < 0.2 => {
-                    delta.insert(&self.gen_string(i), RichTextAttributes::default());
+                    delta.insert(&self.gen_string(i), Attributes::default());
                 }
                 f if f < 0.4 => {
                     delta.delete(i);
                 }
                 _ => {
-                    delta.retain(i, RichTextAttributes::default());
+                    delta.retain(i, Attributes::default());
                 }
             }
         }
         if self.0.gen_range(0.0..1.0) < 0.3 {
-            delta.insert(&("1".to_owned() + &self.gen_string(10)), RichTextAttributes::default());
+            delta.insert(&("1".to_owned() + &self.gen_string(10)), Attributes::default());
         }
         delta
     }

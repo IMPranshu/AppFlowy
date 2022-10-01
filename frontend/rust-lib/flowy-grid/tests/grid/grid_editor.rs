@@ -85,7 +85,7 @@ impl GridEditorTest {
             .row_revs
     }
 
-    pub async fn grid_filters(&self) -> Vec<GridFilterConfiguration> {
+    pub async fn grid_filters(&self) -> Vec<GridFilterConfigurationPB> {
         self.editor.get_grid_filter().await.unwrap()
     }
 
@@ -127,6 +127,7 @@ fn make_test_grid() -> BuildGridContext {
                 let text_field = FieldBuilder::new(RichTextTypeOptionBuilder::default())
                     .name("Name")
                     .visibility(true)
+                    .primary(true)
                     .build();
                 grid_builder.add_field(text_field);
             }
@@ -195,6 +196,8 @@ fn make_test_grid() -> BuildGridContext {
                         FieldType::SingleSelect => {
                             row_builder.insert_single_select_cell(|mut options| options.remove(0))
                         }
+                        FieldType::MultiSelect => row_builder
+                            .insert_multi_select_cell(|mut options| vec![options.remove(0), options.remove(0)]),
                         FieldType::Checkbox => row_builder.insert_checkbox_cell("true"),
                         _ => "".to_owned(),
                     };
@@ -209,6 +212,8 @@ fn make_test_grid() -> BuildGridContext {
                         FieldType::SingleSelect => {
                             row_builder.insert_single_select_cell(|mut options| options.remove(0))
                         }
+                        FieldType::MultiSelect => row_builder
+                            .insert_multi_select_cell(|mut options| vec![options.remove(0), options.remove(0)]),
                         FieldType::Checkbox => row_builder.insert_checkbox_cell("true"),
                         _ => "".to_owned(),
                     };
@@ -222,6 +227,9 @@ fn make_test_grid() -> BuildGridContext {
                         FieldType::DateTime => row_builder.insert_date_cell("1647251762"),
                         FieldType::SingleSelect => {
                             row_builder.insert_single_select_cell(|mut options| options.remove(1))
+                        }
+                        FieldType::MultiSelect => {
+                            row_builder.insert_multi_select_cell(|mut options| vec![options.remove(0)])
                         }
                         FieldType::Checkbox => row_builder.insert_checkbox_cell("false"),
                         _ => "".to_owned(),

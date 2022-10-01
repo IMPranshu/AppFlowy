@@ -1,12 +1,9 @@
-import 'package:appflowy_editor/src/document/node.dart';
-import 'package:appflowy_editor/src/editor_state.dart';
+import 'package:appflowy_editor/appflowy_editor.dart';
+import 'package:appflowy_editor/src/commands/format_built_in_text.dart';
 import 'package:appflowy_editor/src/infra/flowy_svg.dart';
-import 'package:appflowy_editor/src/operation/transaction_builder.dart';
-import 'package:appflowy_editor/src/render/rich_text/default_selectable.dart';
-import 'package:appflowy_editor/src/render/rich_text/flowy_rich_text.dart';
-import 'package:appflowy_editor/src/render/rich_text/rich_text_style.dart';
-import 'package:appflowy_editor/src/render/selection/selectable.dart';
-import 'package:appflowy_editor/src/service/render_plugin_service.dart';
+import 'package:appflowy_editor/src/render/rich_text/built_in_text_widget.dart';
+
+import 'package:appflowy_editor/src/extensions/text_style_extension.dart';
 import 'package:flutter/material.dart';
 
 class CheckboxNodeWidgetBuilder extends NodeWidgetBuilder<TextNode> {
@@ -21,18 +18,20 @@ class CheckboxNodeWidgetBuilder extends NodeWidgetBuilder<TextNode> {
 
   @override
   NodeValidator<Node> get nodeValidator => ((node) {
-        return node.attributes.containsKey(StyleKey.checkbox);
+        return node.attributes.containsKey(BuiltInAttributeKey.checkbox);
       });
 }
 
-class CheckboxNodeWidget extends StatefulWidget {
+class CheckboxNodeWidget extends BuiltInTextWidget {
   const CheckboxNodeWidget({
     Key? key,
     required this.textNode,
     required this.editorState,
   }) : super(key: key);
 
+  @override
   final TextNode textNode;
+  @override
   final EditorState editorState;
 
   @override
@@ -40,129 +39,64 @@ class CheckboxNodeWidget extends StatefulWidget {
 }
 
 class _CheckboxNodeWidgetState extends State<CheckboxNodeWidget>
-    with Selectable, DefaultSelectable {
+    with
+        SelectableMixin,
+        DefaultSelectable,
+        BuiltInStyleMixin,
+        BuiltInTextWidgetMixin {
   @override
   final iconKey = GlobalKey();
 
   final _richTextKey = GlobalKey(debugLabel: 'checkbox_text');
-  final _iconWidth = 20.0;
-  final _iconRightPadding = 5.0;
 
   @override
-  Selectable<StatefulWidget> get forward =>
-      _richTextKey.currentState as Selectable;
+  SelectableMixin<StatefulWidget> get forward =>
+      _richTextKey.currentState as SelectableMixin;
 
   @override
-  Widget build(BuildContext context) {
-    if (widget.textNode.children.isEmpty) {
-      return _buildWithSingle(context);
-    } else {
-      return _buildWithChildren(context);
-    }
+  Offset get baseOffset {
+    return super.baseOffset.translate(0, padding.top);
   }
 
-  Widget _buildWithSingle(BuildContext context) {
+  @override
+  Widget buildWithSingle(BuildContext context) {
     final check = widget.textNode.attributes.check;
-    final topPadding = RichTextStyle.fromTextNode(widget.textNode).topPadding;
-    return SizedBox(
-      width: defaultMaxTextNodeWidth,
-      child: Padding(
-        padding: EdgeInsets.only(bottom: defaultLinePadding),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            GestureDetector(
-              key: iconKey,
-              child: FlowySvg(
-                width: _iconWidth,
-                height: _iconWidth,
-                padding: EdgeInsets.only(
-                  top: topPadding,
-                  right: _iconRightPadding,
-                ),
-                name: check ? 'check' : 'uncheck',
-              ),
-              onTap: () {
-                TransactionBuilder(widget.editorState)
-                  ..updateNode(widget.textNode, {
-                    StyleKey.checkbox: !check,
-                  })
-                  ..commit();
-              },
+    return Padding(
+      padding: padding,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          GestureDetector(
+            key: iconKey,
+            child: FlowySvg(
+              width: iconSize?.width,
+              height: iconSize?.height,
+              padding: iconPadding,
+              name: check ? 'check' : 'uncheck',
             ),
-            Expanded(
-              child: FlowyRichText(
-                key: _richTextKey,
-                placeholderText: 'To-do',
+            onTap: () async {
+              await formatTextToCheckbox(
+                widget.editorState,
+                !check,
                 textNode: widget.textNode,
-                textSpanDecorator: _textSpanDecorator,
-                placeholderTextSpanDecorator: _textSpanDecorator,
-                editorState: widget.editorState,
-              ),
+              );
+            },
+          ),
+          Flexible(
+            child: FlowyRichText(
+              key: _richTextKey,
+              placeholderText: 'To-do',
+              lineHeight: widget.editorState.editorStyle.textStyle.lineHeight,
+              textNode: widget.textNode,
+              textSpanDecorator: (textSpan) =>
+                  textSpan.updateTextStyle(textStyle),
+              placeholderTextSpanDecorator: (textSpan) =>
+                  textSpan.updateTextStyle(textStyle),
+              editorState: widget.editorState,
             ),
-          ],
-        ),
+          ),
+        ],
       ),
-    );
-  }
-
-  Widget _buildWithChildren(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _buildWithSingle(context),
-        Row(
-          children: [
-            const SizedBox(
-              width: 20,
-            ),
-            Column(
-              children: widget.textNode.children
-                  .map(
-                    (child) => widget.editorState.service.renderPluginService
-                        .buildPluginWidget(
-                      child is TextNode
-                          ? NodeWidgetContext<TextNode>(
-                              context: context,
-                              node: child,
-                              editorState: widget.editorState,
-                            )
-                          : NodeWidgetContext<Node>(
-                              context: context,
-                              node: child,
-                              editorState: widget.editorState,
-                            ),
-                    ),
-                  )
-                  .toList(),
-            )
-          ],
-        )
-      ],
-    );
-  }
-
-  TextSpan _textSpanDecorator(TextSpan textSpan) {
-    return TextSpan(
-      children: textSpan.children
-          ?.whereType<TextSpan>()
-          .map(
-            (span) => TextSpan(
-              text: span.text,
-              style: widget.textNode.attributes.check
-                  ? span.style?.copyWith(
-                      color: Colors.grey,
-                      decoration: TextDecoration.combine([
-                        TextDecoration.lineThrough,
-                        if (span.style?.decoration != null)
-                          span.style!.decoration!
-                      ]),
-                    )
-                  : span.style,
-              recognizer: span.recognizer,
-            ),
-          )
-          .toList(),
     );
   }
 }

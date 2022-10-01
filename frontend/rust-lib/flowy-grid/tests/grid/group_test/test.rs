@@ -1,12 +1,13 @@
 use crate::grid::group_test::script::GridGroupTest;
 use crate::grid::group_test::script::GroupScript::*;
-use flowy_grid::entities::FieldChangesetParams;
+
+use flowy_grid::services::field::SelectOptionPB;
 
 #[tokio::test]
 async fn group_init_test() {
     let mut test = GridGroupTest::new().await;
     let scripts = vec![
-        AssertGroupCount(3),
+        AssertGroupCount(4),
         AssertGroupRowCount {
             group_index: 0,
             row_count: 2,
@@ -18,6 +19,10 @@ async fn group_init_test() {
         AssertGroupRowCount {
             group_index: 2,
             row_count: 1,
+        },
+        AssertGroupRowCount {
+            group_index: 3,
+            row_count: 0,
         },
     ];
     test.run_scripts(scripts).await;
@@ -295,6 +300,55 @@ async fn group_reorder_group_test() {
 }
 
 #[tokio::test]
+async fn group_move_to_default_group_test() {
+    let mut test = GridGroupTest::new().await;
+    let scripts = vec![
+        UpdateRow {
+            from_group_index: 0,
+            row_index: 0,
+            to_group_index: 3,
+        },
+        AssertGroupRowCount {
+            group_index: 0,
+            row_count: 1,
+        },
+        AssertGroupRowCount {
+            group_index: 3,
+            row_count: 1,
+        },
+    ];
+    test.run_scripts(scripts).await;
+}
+
+#[tokio::test]
+async fn group_move_from_default_group_test() {
+    let mut test = GridGroupTest::new().await;
+    let scripts = vec![UpdateRow {
+        from_group_index: 0,
+        row_index: 0,
+        to_group_index: 3,
+    }];
+    test.run_scripts(scripts).await;
+
+    let scripts = vec![
+        UpdateRow {
+            from_group_index: 3,
+            row_index: 0,
+            to_group_index: 0,
+        },
+        AssertGroupRowCount {
+            group_index: 0,
+            row_count: 2,
+        },
+        AssertGroupRowCount {
+            group_index: 3,
+            row_count: 0,
+        },
+    ];
+    test.run_scripts(scripts).await;
+}
+
+#[tokio::test]
 async fn group_move_group_test() {
     let mut test = GridGroupTest::new().await;
     let group_0 = test.group_at_index(0).await;
@@ -317,23 +371,60 @@ async fn group_move_group_test() {
 }
 
 #[tokio::test]
-async fn group_update_field_test() {
+async fn group_default_move_group_test() {
     let mut test = GridGroupTest::new().await;
-    let group = test.group_at_index(0).await;
-    let changeset = FieldChangesetParams {
-        field_id: group.field_id.clone(),
-        grid_id: test.grid_id.clone(),
-        name: Some("ABC".to_string()),
-        ..Default::default()
-    };
-
-    // group.desc = "ABC".to_string();
+    let group_0 = test.group_at_index(0).await;
+    let group_3 = test.group_at_index(3).await;
     let scripts = vec![
-        UpdateField { changeset },
+        MoveGroup {
+            from_group_index: 3,
+            to_group_index: 0,
+        },
         AssertGroup {
             group_index: 0,
-            expected_group: group,
+            expected_group: group_3,
         },
+        AssertGroup {
+            group_index: 1,
+            expected_group: group_0,
+        },
+    ];
+    test.run_scripts(scripts).await;
+}
+
+#[tokio::test]
+async fn group_insert_single_select_option_test() {
+    let mut test = GridGroupTest::new().await;
+    let new_option_name = "New option";
+    let scripts = vec![
+        AssertGroupCount(4),
+        UpdateSingleSelectOption {
+            inserted_options: vec![SelectOptionPB::new(new_option_name)],
+        },
+        AssertGroupCount(5),
+    ];
+    test.run_scripts(scripts).await;
+    let new_group = test.group_at_index(0).await;
+    assert_eq!(new_group.desc, new_option_name);
+}
+
+#[tokio::test]
+async fn group_group_by_other_field() {
+    let mut test = GridGroupTest::new().await;
+    let multi_select_field = test.get_multi_select_field().await;
+    let scripts = vec![
+        GroupByField {
+            field_id: multi_select_field.id.clone(),
+        },
+        AssertGroupRowCount {
+            group_index: 0,
+            row_count: 3,
+        },
+        AssertGroupRowCount {
+            group_index: 1,
+            row_count: 2,
+        },
+        AssertGroupCount(5),
     ];
     test.run_scripts(scripts).await;
 }

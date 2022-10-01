@@ -1,5 +1,8 @@
+import 'package:appflowy_editor/src/render/image/image_node_builder.dart';
 import 'package:appflowy_editor/src/render/selection_menu/selection_menu_widget.dart';
-import 'package:appflowy_editor/src/service/internal_key_event_handlers/default_key_event_handlers.dart';
+import 'package:appflowy_editor/src/render/style/editor_style.dart';
+import 'package:appflowy_editor/src/service/shortcut_event/built_in_shortcut_events.dart';
+import 'package:appflowy_editor/src/service/shortcut_event/shortcut_event.dart';
 import 'package:flutter/material.dart';
 
 import 'package:appflowy_editor/src/editor_state.dart';
@@ -25,6 +28,7 @@ NodeWidgetBuilders defaultBuilders = {
   'text/bulleted-list': BulletedListTextNodeWidgetBuilder(),
   'text/number-list': NumberListTextNodeWidgetBuilder(),
   'text/quote': QuotedTextNodeWidgetBuilder(),
+  'image': ImageNodeBuilder(),
 };
 
 class AppFlowyEditor extends StatefulWidget {
@@ -32,8 +36,10 @@ class AppFlowyEditor extends StatefulWidget {
     Key? key,
     required this.editorState,
     this.customBuilders = const {},
-    this.keyEventHandlers = const [],
+    this.shortcutEvents = const [],
     this.selectionMenuItems = const [],
+    this.editable = true,
+    required this.editorStyle,
   }) : super(key: key);
 
   final EditorState editorState;
@@ -42,15 +48,21 @@ class AppFlowyEditor extends StatefulWidget {
   final NodeWidgetBuilders customBuilders;
 
   /// Keyboard event handlers.
-  final List<AppFlowyKeyEventHandler> keyEventHandlers;
+  final List<ShortcutEvent> shortcutEvents;
 
   final List<SelectionMenuItem> selectionMenuItems;
+
+  final EditorStyle editorStyle;
+
+  final bool editable;
 
   @override
   State<AppFlowyEditor> createState() => _AppFlowyEditorState();
 }
 
 class _AppFlowyEditorState extends State<AppFlowyEditor> {
+  Widget? services;
+
   EditorState get editorState => widget.editorState;
 
   @override
@@ -58,7 +70,9 @@ class _AppFlowyEditorState extends State<AppFlowyEditor> {
     super.initState();
 
     editorState.selectionMenuItems = widget.selectionMenuItems;
+    editorState.editorStyle = widget.editorStyle;
     editorState.service.renderPluginService = _createRenderPlugin();
+    editorState.editable = widget.editable;
   }
 
   @override
@@ -66,35 +80,60 @@ class _AppFlowyEditorState extends State<AppFlowyEditor> {
     super.didUpdateWidget(oldWidget);
 
     if (editorState.service != oldWidget.editorState.service) {
+      editorState.selectionMenuItems = widget.selectionMenuItems;
       editorState.service.renderPluginService = _createRenderPlugin();
     }
+
+    editorState.editorStyle = widget.editorStyle;
+    editorState.editable = widget.editable;
+    services = null;
   }
 
   @override
   Widget build(BuildContext context) {
+    services ??= _buildServices(context);
+    return Overlay(
+      initialEntries: [
+        OverlayEntry(
+          builder: (context) => services!,
+        ),
+      ],
+    );
+  }
+
+  AppFlowyScroll _buildServices(BuildContext context) {
     return AppFlowyScroll(
       key: editorState.service.scrollServiceKey,
-      child: AppFlowySelection(
-        key: editorState.service.selectionServiceKey,
-        editorState: editorState,
-        child: AppFlowyInput(
-          key: editorState.service.inputServiceKey,
+      child: Padding(
+        padding: widget.editorStyle.padding,
+        child: AppFlowySelection(
+          key: editorState.service.selectionServiceKey,
+          cursorColor: widget.editorStyle.cursorColor,
+          selectionColor: widget.editorStyle.selectionColor,
           editorState: editorState,
-          child: AppFlowyKeyboard(
-            key: editorState.service.keyboardServiceKey,
-            handlers: [
-              ...defaultKeyEventHandlers,
-              ...widget.keyEventHandlers,
-            ],
+          editable: widget.editable,
+          child: AppFlowyInput(
+            key: editorState.service.inputServiceKey,
             editorState: editorState,
-            child: FlowyToolbar(
-              key: editorState.service.toolbarServiceKey,
+            editable: widget.editable,
+            child: AppFlowyKeyboard(
+              key: editorState.service.keyboardServiceKey,
+              editable: widget.editable,
+              shortcutEvents: [
+                ...widget.shortcutEvents,
+                ...builtInShortcutEvents,
+              ],
               editorState: editorState,
-              child: editorState.service.renderPluginService.buildPluginWidget(
-                NodeWidgetContext(
-                  context: context,
-                  node: editorState.document.root,
-                  editorState: editorState,
+              child: FlowyToolbar(
+                key: editorState.service.toolbarServiceKey,
+                editorState: editorState,
+                child:
+                    editorState.service.renderPluginService.buildPluginWidget(
+                  NodeWidgetContext(
+                    context: context,
+                    node: editorState.document.root,
+                    editorState: editorState,
+                  ),
                 ),
               ),
             ),

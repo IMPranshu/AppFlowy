@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:appflowy_editor/src/infra/log.dart';
 import 'package:appflowy_editor/src/render/selection_menu/selection_menu_widget.dart';
+import 'package:appflowy_editor/src/render/style/editor_style.dart';
 import 'package:appflowy_editor/src/service/service.dart';
 import 'package:flutter/material.dart';
 
@@ -58,14 +59,32 @@ class EditorState {
   /// Stores the selection menu items.
   List<SelectionMenuItem> selectionMenuItems = [];
 
+  /// Stores the editor style.
+  EditorStyle editorStyle = EditorStyle.defaultStyle();
+
+  /// Operation stream.
+  Stream<Operation> get operationStream => _observer.stream;
+  final StreamController<Operation> _observer = StreamController.broadcast();
+
   final UndoManager undoManager = UndoManager();
   Selection? _cursorSelection;
 
   // TODO: only for testing.
   bool disableSealTimer = false;
 
+  bool editable = true;
+
   Selection? get cursorSelection {
     return _cursorSelection;
+  }
+
+  RenderBox? get renderBox {
+    final renderObject =
+        service.scrollServiceKey.currentContext?.findRenderObject();
+    if (renderObject != null && renderObject is RenderBox) {
+      return renderObject;
+    }
+    return null;
   }
 
   updateCursorSelection(Selection? cursorSelection,
@@ -95,6 +114,9 @@ class EditorState {
   /// should record the transaction in undo/redo stack.
   apply(Transaction transaction,
       [ApplyOptions options = const ApplyOptions()]) {
+    if (!editable) {
+      return;
+    }
     // TODO: validate the transation.
     for (final op in transaction.operations) {
       _applyOperation(op);
@@ -147,5 +169,6 @@ class EditorState {
     } else if (op is TextEditOperation) {
       document.textEdit(op.path, op.delta);
     }
+    _observer.add(op);
   }
 }

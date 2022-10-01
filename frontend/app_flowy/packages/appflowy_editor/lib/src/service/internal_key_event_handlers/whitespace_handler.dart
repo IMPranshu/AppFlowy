@@ -1,13 +1,14 @@
+import 'package:appflowy_editor/src/service/shortcut_event/shortcut_event_handler.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-
+import 'package:appflowy_editor/src/document/built_in_attribute_keys.dart';
 import 'package:appflowy_editor/src/document/node.dart';
 import 'package:appflowy_editor/src/document/position.dart';
 import 'package:appflowy_editor/src/document/selection.dart';
 import 'package:appflowy_editor/src/editor_state.dart';
 import 'package:appflowy_editor/src/operation/transaction_builder.dart';
-import 'package:appflowy_editor/src/render/rich_text/rich_text_style.dart';
-import 'package:appflowy_editor/src/service/keyboard_service.dart';
+import './number_list_helper.dart';
+import 'package:appflowy_editor/src/extensions/attributes_extension.dart';
 
 @visibleForTesting
 List<String> get checkboxListSymbols => _checkboxListSymbols;
@@ -20,7 +21,9 @@ const _bulletedListSymbols = ['*', '-'];
 const _checkboxListSymbols = ['[x]', '-[x]'];
 const _unCheckboxListSymbols = ['[]', '-[]'];
 
-AppFlowyKeyEventHandler whiteSpaceHandler = (editorState, event) {
+final _numberRegex = RegExp(r'^(\d+)\.');
+
+ShortcutEventHandler whiteSpaceHandler = (editorState, event) {
   if (event.logicalKey != LogicalKeyboardKey.space) {
     return KeyEventResult.ignored;
   }
@@ -41,26 +44,84 @@ AppFlowyKeyEventHandler whiteSpaceHandler = (editorState, event) {
   }
 
   final textNode = textNodes.first;
-  final text = textNode.toRawString();
-  if ((_checkboxListSymbols + _unCheckboxListSymbols).any(text.startsWith)) {
+  final text = textNode.toRawString().substring(0, selection.end.offset);
+
+  final numberMatch = _numberRegex.firstMatch(text);
+
+  if ((_checkboxListSymbols + _unCheckboxListSymbols).contains(text)) {
     return _toCheckboxList(editorState, textNode);
-  } else if (_bulletedListSymbols.any(text.startsWith)) {
+  } else if (_bulletedListSymbols.contains(text)) {
     return _toBulletedList(editorState, textNode);
   } else if (_countOfSign(text, selection) != 0) {
     return _toHeadingStyle(editorState, textNode, selection);
+  } else if (numberMatch != null) {
+    final matchText = numberMatch.group(0);
+    final numText = numberMatch.group(1);
+    if (matchText != null && numText != null) {
+      return _toNumberList(editorState, textNode, matchText, numText);
+    }
   }
 
   return KeyEventResult.ignored;
 };
 
+KeyEventResult _toNumberList(EditorState editorState, TextNode textNode,
+    String matchText, String numText) {
+  if (textNode.subtype == BuiltInAttributeKey.bulletedList) {
+    return KeyEventResult.ignored;
+  }
+
+  final numValue = int.tryParse(numText);
+  if (numValue == null) {
+    return KeyEventResult.ignored;
+  }
+
+  // The user types number + . + space, he wants to turn
+  // this line into number list, but we should check if previous line
+  // is number list.
+  //
+  // Check whether the number input by the user is the successor of the previous
+  // line. If it's not, ignore it.
+  final prevNode = textNode.previous;
+  if (prevNode != null &&
+      prevNode is TextNode &&
+      prevNode.attributes[BuiltInAttributeKey.subtype] ==
+          BuiltInAttributeKey.numberList) {
+    final prevNumber = prevNode.attributes[BuiltInAttributeKey.number] as int;
+    if (numValue != prevNumber + 1) {
+      return KeyEventResult.ignored;
+    }
+  }
+
+  final afterSelection = Selection.collapsed(Position(
+    path: textNode.path,
+    offset: 0,
+  ));
+
+  final insertPath = textNode.path;
+
+  TransactionBuilder(editorState)
+    ..deleteText(textNode, 0, matchText.length)
+    ..updateNode(textNode, {
+      BuiltInAttributeKey.subtype: BuiltInAttributeKey.numberList,
+      BuiltInAttributeKey.number: numValue
+    })
+    ..afterSelection = afterSelection
+    ..commit();
+
+  makeFollowingNodesIncremental(editorState, insertPath, afterSelection);
+
+  return KeyEventResult.handled;
+}
+
 KeyEventResult _toBulletedList(EditorState editorState, TextNode textNode) {
-  if (textNode.subtype == StyleKey.bulletedList) {
+  if (textNode.subtype == BuiltInAttributeKey.bulletedList) {
     return KeyEventResult.ignored;
   }
   TransactionBuilder(editorState)
     ..deleteText(textNode, 0, 1)
     ..updateNode(textNode, {
-      StyleKey.subtype: StyleKey.bulletedList,
+      BuiltInAttributeKey.subtype: BuiltInAttributeKey.bulletedList,
     })
     ..afterSelection = Selection.collapsed(
       Position(
@@ -73,7 +134,7 @@ KeyEventResult _toBulletedList(EditorState editorState, TextNode textNode) {
 }
 
 KeyEventResult _toCheckboxList(EditorState editorState, TextNode textNode) {
-  if (textNode.subtype == StyleKey.checkbox) {
+  if (textNode.subtype == BuiltInAttributeKey.checkbox) {
     return KeyEventResult.ignored;
   }
   final String symbol;
@@ -93,8 +154,8 @@ KeyEventResult _toCheckboxList(EditorState editorState, TextNode textNode) {
   TransactionBuilder(editorState)
     ..deleteText(textNode, 0, symbol.length)
     ..updateNode(textNode, {
-      StyleKey.subtype: StyleKey.checkbox,
-      StyleKey.checkbox: check,
+      BuiltInAttributeKey.subtype: BuiltInAttributeKey.checkbox,
+      BuiltInAttributeKey.checkbox: check,
     })
     ..afterSelection = Selection.collapsed(
       Position(
@@ -119,8 +180,8 @@ KeyEventResult _toHeadingStyle(
   TransactionBuilder(editorState)
     ..deleteText(textNode, 0, x)
     ..updateNode(textNode, {
-      StyleKey.subtype: StyleKey.heading,
-      StyleKey.heading: hX,
+      BuiltInAttributeKey.subtype: BuiltInAttributeKey.heading,
+      BuiltInAttributeKey.heading: hX,
     })
     ..afterSelection = Selection.collapsed(
       Position(
@@ -134,7 +195,7 @@ KeyEventResult _toHeadingStyle(
 
 int _countOfSign(String text, Selection selection) {
   for (var i = 6; i >= 0; i--) {
-    if (text.substring(0, selection.end.offset).startsWith('#' * i)) {
+    if (text.substring(0, selection.end.offset).contains('#' * i)) {
       return i;
     }
   }

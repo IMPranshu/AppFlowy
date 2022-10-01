@@ -1,4 +1,8 @@
-import 'package:appflowy_editor/appflowy_editor.dart';
+import 'package:appflowy_editor/src/service/input_service.dart';
+import 'package:appflowy_editor/src/service/keyboard_service.dart';
+import 'package:appflowy_editor/src/service/render_plugin_service.dart';
+import 'package:appflowy_editor/src/service/scroll_service.dart';
+import 'package:appflowy_editor/src/service/selection_service.dart';
 import 'package:appflowy_editor/src/service/toolbar_service.dart';
 import 'package:flutter/material.dart';
 
@@ -36,10 +40,10 @@ class FlowyService {
 
   // toolbar service
   final toolbarServiceKey = GlobalKey(debugLabel: 'flowy_toolbar_service');
-  FlowyToolbarService? get toolbarService {
+  AppFlowyToolbarService? get toolbarService {
     if (toolbarServiceKey.currentState != null &&
-        toolbarServiceKey.currentState is FlowyToolbarService) {
-      return toolbarServiceKey.currentState! as FlowyToolbarService;
+        toolbarServiceKey.currentState is AppFlowyToolbarService) {
+      return toolbarServiceKey.currentState! as AppFlowyToolbarService;
     }
     return null;
   }

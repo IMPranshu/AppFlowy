@@ -86,7 +86,8 @@ class MenuAppHeader extends StatelessWidget {
               ?.toggle(),
           onSecondaryTap: () {
             final actionList = AppDisclosureActionSheet(
-                onSelected: (action) => _handleAction(context, action));
+              onSelected: (action) => _handleAction(context, action),
+            );
             actionList.show(
               context,
               anchorDirection: AnchorDirection.bottomWithCenterAligned,
@@ -126,7 +127,7 @@ class MenuAppHeader extends StatelessWidget {
     action.fold(() {}, (action) {
       switch (action) {
         case AppDisclosureAction.rename:
-          TextFieldDialog(
+          NavigatorTextFieldDialog(
             title: LocaleKeys.menuAppHeader_renameDialog.tr(),
             value: context.read<AppBloc>().state.app.name,
             confirm: (newValue) {
@@ -158,12 +159,12 @@ extension AppDisclosureExtension on AppDisclosureAction {
     }
   }
 
-  Widget get icon {
+  Widget icon(Color iconColor) {
     switch (this) {
       case AppDisclosureAction.rename:
-        return svgWidget('editor/edit', color: const Color(0xffe5e5e5));
+        return svgWidget('editor/edit', color: iconColor);
       case AppDisclosureAction.delete:
-        return svgWidget('editor/delete', color: const Color(0xffe5e5e5));
+        return svgWidget('editor/delete', color: iconColor);
     }
   }
 }

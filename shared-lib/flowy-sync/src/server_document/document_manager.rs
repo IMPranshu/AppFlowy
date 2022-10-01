@@ -11,7 +11,8 @@ use async_stream::stream;
 use dashmap::DashMap;
 use futures::stream::StreamExt;
 use lib_infra::future::BoxResultFuture;
-use lib_ot::rich_text::{RichTextAttributes, RichTextDelta};
+use lib_ot::core::Attributes;
+use lib_ot::text_delta::TextDelta;
 use std::{collections::HashMap, fmt::Debug, sync::Arc};
 use tokio::{
     sync::{mpsc, oneshot, RwLock},
@@ -198,7 +199,7 @@ impl std::ops::Drop for ServerDocumentManager {
     }
 }
 
-type DocumentRevisionSynchronizer = RevisionSynchronizer<RichTextAttributes>;
+type DocumentRevisionSynchronizer = RevisionSynchronizer<Attributes>;
 
 struct OpenDocumentHandler {
     doc_id: String,
@@ -212,7 +213,7 @@ impl OpenDocumentHandler {
         let (sender, receiver) = mpsc::channel(1000);
         let users = DashMap::new();
 
-        let delta = RichTextDelta::from_bytes(&doc.text)?;
+        let delta = TextDelta::from_bytes(&doc.text)?;
         let sync_object = ServerDocument::from_delta(&doc_id, delta);
         let synchronizer = Arc::new(DocumentRevisionSynchronizer::new(doc.rev_id, sync_object, persistence));
 

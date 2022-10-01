@@ -1,9 +1,13 @@
-import 'package:app_flowy/plugins/grid/application/field/field_cache.dart';
+import 'package:app_flowy/generated/locale_keys.g.dart';
+import 'package:app_flowy/plugins/grid/application/field/field_controller.dart';
 import 'package:app_flowy/plugins/grid/application/field/type_option/type_option_context.dart';
 import 'package:app_flowy/startup/startup.dart';
 import 'package:app_flowy/plugins/grid/application/prelude.dart';
+import 'package:easy_localization/easy_localization.dart';
+import 'package:appflowy_popover/appflowy_popover.dart';
 import 'package:flowy_infra/image.dart';
 import 'package:flowy_infra/theme.dart';
+import 'package:flowy_infra_ui/flowy_infra_ui.dart';
 import 'package:flowy_infra_ui/style_widget/button.dart';
 import 'package:flowy_infra_ui/style_widget/text.dart';
 import 'package:flowy_sdk/protobuf/flowy-grid/field_entities.pb.dart';
@@ -16,11 +20,11 @@ import 'field_cell.dart';
 
 class GridHeaderSliverAdaptor extends StatefulWidget {
   final String gridId;
-  final GridFieldCache fieldCache;
+  final GridFieldController fieldController;
   final ScrollController anchorScrollController;
   const GridHeaderSliverAdaptor({
     required this.gridId,
-    required this.fieldCache,
+    required this.fieldController,
     required this.anchorScrollController,
     Key? key,
   }) : super(key: key);
@@ -36,7 +40,7 @@ class _GridHeaderSliverAdaptorState extends State<GridHeaderSliverAdaptor> {
     return BlocProvider(
       create: (context) {
         final bloc = getIt<GridHeaderBloc>(
-            param1: widget.gridId, param2: widget.fieldCache);
+            param1: widget.gridId, param2: widget.fieldController);
         bloc.add(const GridHeaderEvent.initial());
         return bloc;
       },
@@ -73,6 +77,21 @@ class _GridHeader extends StatefulWidget {
 }
 
 class _GridHeaderState extends State<_GridHeader> {
+  final Map<String, ValueKey<String>> _gridMap = {};
+
+  /// This is a workaround for [ReorderableRow].
+  /// [ReorderableRow] warps the child's key with a [GlobalKey].
+  /// It will trigger the child's widget's to recreate.
+  /// The state will lose.
+  _getKeyById(String id) {
+    if (_gridMap.containsKey(id)) {
+      return _gridMap[id];
+    }
+    final newKey = ValueKey(id);
+    _gridMap[id] = newKey;
+    return newKey;
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = context.watch<AppTheme>();
@@ -82,8 +101,9 @@ class _GridHeaderState extends State<_GridHeader> {
         final cells = state.fields
             .where((field) => field.visibility)
             .map((field) =>
-                GridFieldCellContext(gridId: widget.gridId, field: field))
-            .map((ctx) => GridFieldCell(ctx, key: ValueKey(ctx.field.id)))
+                GridFieldCellContext(gridId: widget.gridId, field: field.field))
+            .map((ctx) =>
+                GridFieldCell(key: _getKeyById(ctx.field.id), cellContext: ctx))
             .toList();
 
         return Container(
@@ -93,6 +113,7 @@ class _GridHeaderState extends State<_GridHeader> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               scrollController: ScrollController(),
               header: const _CellLeading(),
+              needsLongPressDraggable: false,
               footer: _CellTrailing(gridId: widget.gridId),
               onReorder: (int oldIndex, int newIndex) {
                 _onReorder(cells, oldIndex, context, newIndex);
@@ -154,15 +175,30 @@ class CreateFieldButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = context.watch<AppTheme>();
 
-    return FlowyButton(
-      text: const FlowyText.medium('New column', fontSize: 12),
-      hoverColor: theme.shader6,
-      onTap: () => FieldEditor(
-        gridId: gridId,
-        fieldName: "",
-        typeOptionLoader: NewFieldTypeOptionLoader(gridId: gridId),
-      ).show(context),
-      leftIcon: svgWidget("home/add"),
+    return AppFlowyPopover(
+      direction: PopoverDirection.bottomWithRightAligned,
+      asBarrier: true,
+      constraints: BoxConstraints.loose(const Size(240, 600)),
+      child: FlowyButton(
+        radius: BorderRadius.zero,
+        text: FlowyText.medium(
+          LocaleKeys.grid_field_newColumn.tr(),
+          fontSize: 12,
+        ),
+        hoverColor: theme.shader6,
+        onTap: () {},
+        leftIcon: svgWidget(
+          "home/add",
+          color: theme.iconColor,
+        ),
+      ),
+      popupBuilder: (BuildContext popover) {
+        return FieldEditor(
+          gridId: gridId,
+          fieldName: "",
+          typeOptionLoader: NewFieldTypeOptionLoader(gridId: gridId),
+        );
+      },
     );
   }
 }

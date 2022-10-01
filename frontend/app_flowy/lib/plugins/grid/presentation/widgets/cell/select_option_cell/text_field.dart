@@ -11,57 +11,76 @@ import 'package:textfield_tags/textfield_tags.dart';
 
 import 'extension.dart';
 
-class SelectOptionTextField extends StatelessWidget {
-  final FocusNode _focusNode;
-  final TextEditingController _controller;
+class SelectOptionTextField extends StatefulWidget {
   final TextfieldTagsController tagController;
   final List<SelectOptionPB> options;
   final LinkedHashMap<String, SelectOptionPB> selectedOptionMap;
-
   final double distanceToText;
 
-  final Function(String) onNewTag;
+  final Function(String) onSubmitted;
   final Function(String) newText;
   final VoidCallback? onClick;
 
-  SelectOptionTextField({
+  const SelectOptionTextField({
     required this.options,
     required this.selectedOptionMap,
     required this.distanceToText,
     required this.tagController,
-    required this.onNewTag,
+    required this.onSubmitted,
     required this.newText,
     this.onClick,
-    TextEditingController? controller,
+    TextEditingController? textController,
     FocusNode? focusNode,
     Key? key,
-  })  : _controller = controller ?? TextEditingController(),
-        _focusNode = focusNode ?? FocusNode(),
-        super(key: key);
+  }) : super(key: key);
+
+  @override
+  State<SelectOptionTextField> createState() => _SelectOptionTextFieldState();
+}
+
+class _SelectOptionTextFieldState extends State<SelectOptionTextField> {
+  late FocusNode focusNode;
+  late TextEditingController controller;
+
+  @override
+  void initState() {
+    focusNode = FocusNode();
+    controller = TextEditingController();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      focusNode.requestFocus();
+    });
+    super.initState();
+  }
 
   @override
   Widget build(BuildContext context) {
     final theme = context.watch<AppTheme>();
 
     return TextFieldTags(
-      textEditingController: _controller,
-      textfieldTagsController: tagController,
-      initialTags: selectedOptionMap.keys.toList(),
-      focusNode: _focusNode,
-      textSeparators: const [' ', ','],
-      inputfieldBuilder: (BuildContext context, editController, focusNode,
-          error, onChanged, onSubmitted) {
+      textEditingController: controller,
+      textfieldTagsController: widget.tagController,
+      initialTags: widget.selectedOptionMap.keys.toList(),
+      focusNode: focusNode,
+      textSeparators: const [','],
+      inputfieldBuilder: (
+        BuildContext context,
+        editController,
+        focusNode,
+        error,
+        onChanged,
+        onSubmitted,
+      ) {
         return ((context, sc, tags, onTagDelegate) {
           return TextField(
-            autofocus: true,
             controller: editController,
             focusNode: focusNode,
-            onTap: onClick,
+            onTap: widget.onClick,
             onChanged: (text) {
               if (onChanged != null) {
                 onChanged(text);
               }
-              newText(text);
+              widget.newText(text);
             },
             onSubmitted: (text) {
               if (onSubmitted != null) {
@@ -69,7 +88,8 @@ class SelectOptionTextField extends StatelessWidget {
               }
 
               if (text.isNotEmpty) {
-                onNewTag(text);
+                widget.onSubmitted(text);
+                focusNode.requestFocus();
               }
             },
             maxLines: 1,
@@ -82,7 +102,8 @@ class SelectOptionTextField extends StatelessWidget {
               isDense: true,
               prefixIcon: _renderTags(context, sc),
               hintText: LocaleKeys.grid_selectOption_searchOption.tr(),
-              prefixIconConstraints: BoxConstraints(maxWidth: distanceToText),
+              prefixIconConstraints:
+                  BoxConstraints(maxWidth: widget.distanceToText),
               focusedBorder: OutlineInputBorder(
                 borderSide: BorderSide(color: theme.main1, width: 1.0),
                 borderRadius: Corners.s10Border,
@@ -95,11 +116,11 @@ class SelectOptionTextField extends StatelessWidget {
   }
 
   Widget? _renderTags(BuildContext context, ScrollController sc) {
-    if (selectedOptionMap.isEmpty) {
+    if (widget.selectedOptionMap.isEmpty) {
       return null;
     }
 
-    final children = selectedOptionMap.values
+    final children = widget.selectedOptionMap.values
         .map((option) =>
             SelectOptionTag.fromOption(context: context, option: option))
         .toList();
@@ -108,7 +129,7 @@ class SelectOptionTextField extends StatelessWidget {
       child: SingleChildScrollView(
         controller: sc,
         scrollDirection: Axis.horizontal,
-        child: Wrap(children: children, spacing: 4),
+        child: Wrap(spacing: 4, children: children),
       ),
     );
   }

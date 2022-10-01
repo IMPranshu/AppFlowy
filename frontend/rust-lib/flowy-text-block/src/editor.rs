@@ -2,7 +2,7 @@ use crate::web_socket::EditorCommandSender;
 use crate::{
     errors::FlowyError,
     queue::{EditBlockQueue, EditorCommand},
-    TextBlockUser,
+    TextEditorUser,
 };
 use bytes::Bytes;
 use flowy_error::{internal_error, FlowyResult};
@@ -13,9 +13,10 @@ use flowy_sync::{
     errors::CollaborateResult,
     util::make_delta_from_revisions,
 };
+use lib_ot::core::AttributeEntry;
 use lib_ot::{
     core::{Interval, Operation},
-    rich_text::{RichTextAttribute, RichTextDelta},
+    text_delta::TextDelta,
 };
 use lib_ws::WSConnectState;
 use std::sync::Arc;
@@ -34,7 +35,7 @@ impl TextBlockEditor {
     #[allow(unused_variables)]
     pub(crate) async fn new(
         doc_id: &str,
-        user: Arc<dyn TextBlockUser>,
+        user: Arc<dyn TextEditorUser>,
         mut rev_manager: RevisionManager,
         rev_web_socket: Arc<dyn RevisionWebSocket>,
         cloud_service: Arc<dyn RevisionCloudService>,
@@ -85,7 +86,7 @@ impl TextBlockEditor {
         Ok(())
     }
 
-    pub async fn format(&self, interval: Interval, attribute: RichTextAttribute) -> Result<(), FlowyError> {
+    pub async fn format(&self, interval: Interval, attribute: AttributeEntry) -> Result<(), FlowyError> {
         let (ret, rx) = oneshot::channel::<CollaborateResult<()>>();
         let msg = EditorCommand::Format {
             interval,
@@ -149,7 +150,7 @@ impl TextBlockEditor {
 
     #[tracing::instrument(level = "trace", skip(self, data), err)]
     pub(crate) async fn compose_local_delta(&self, data: Bytes) -> Result<(), FlowyError> {
-        let delta = RichTextDelta::from_bytes(&data)?;
+        let delta = TextDelta::from_bytes(&data)?;
         let (ret, rx) = oneshot::channel::<CollaborateResult<()>>();
         let msg = EditorCommand::ComposeLocalDelta {
             delta: delta.clone(),
@@ -193,9 +194,9 @@ impl std::ops::Drop for TextBlockEditor {
 
 // The edit queue will exit after the EditorCommandSender was dropped.
 fn spawn_edit_queue(
-    user: Arc<dyn TextBlockUser>,
+    user: Arc<dyn TextEditorUser>,
     rev_manager: Arc<RevisionManager>,
-    delta: RichTextDelta,
+    delta: TextDelta,
 ) -> EditorCommandSender {
     let (sender, receiver) = mpsc::channel(1000);
     let edit_queue = EditBlockQueue::new(user, rev_manager, delta, receiver);
@@ -214,8 +215,8 @@ fn spawn_edit_queue(
 
 #[cfg(feature = "flowy_unit_test")]
 impl TextBlockEditor {
-    pub async fn text_block_delta(&self) -> FlowyResult<RichTextDelta> {
-        let (ret, rx) = oneshot::channel::<CollaborateResult<RichTextDelta>>();
+    pub async fn text_block_delta(&self) -> FlowyResult<TextDelta> {
+        let (ret, rx) = oneshot::channel::<CollaborateResult<TextDelta>>();
         let msg = EditorCommand::ReadDelta { ret };
         let _ = self.edit_cmd_tx.send(msg).await;
         let delta = rx.await.map_err(internal_error)??;
@@ -247,7 +248,7 @@ impl RevisionObjectBuilder for TextBlockInfoBuilder {
 
 // quill-editor requires the delta should end with '\n' and only contains the
 // insert operation. The function, correct_delta maybe be removed in the future.
-fn correct_delta(delta: &mut RichTextDelta) {
+fn correct_delta(delta: &mut TextDelta) {
     if let Some(op) = delta.ops.last() {
         let op_data = op.get_data();
         if !op_data.ends_with('\n') {

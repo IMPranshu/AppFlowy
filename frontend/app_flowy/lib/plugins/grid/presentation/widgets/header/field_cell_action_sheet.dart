@@ -1,8 +1,11 @@
+import 'package:app_flowy/plugins/grid/application/field/type_option/type_option_context.dart';
+import 'package:app_flowy/plugins/grid/presentation/widgets/header/field_editor.dart';
 import 'package:app_flowy/startup/startup.dart';
 import 'package:app_flowy/plugins/grid/application/prelude.dart';
+import 'package:app_flowy/workspace/presentation/widgets/dialogs.dart';
+import 'package:appflowy_popover/appflowy_popover.dart';
 import 'package:flowy_infra/image.dart';
 import 'package:flowy_infra/theme.dart';
-import 'package:flowy_infra_ui/flowy_infra_ui.dart';
 import 'package:flowy_infra_ui/style_widget/button.dart';
 import 'package:flowy_infra_ui/style_widget/text.dart';
 import 'package:flowy_infra_ui/widget/spacing.dart';
@@ -13,75 +16,75 @@ import 'package:app_flowy/generated/locale_keys.g.dart';
 
 import '../../layout/sizes.dart';
 
-class GridFieldCellActionSheet extends StatelessWidget
-    with FlowyOverlayDelegate {
+class GridFieldCellActionSheet extends StatefulWidget {
   final GridFieldCellContext cellContext;
-  final VoidCallback onEdited;
-  const GridFieldCellActionSheet(
-      {required this.cellContext, required this.onEdited, Key? key})
+  const GridFieldCellActionSheet({required this.cellContext, Key? key})
       : super(key: key);
 
-  void show(BuildContext overlayContext) {
-    FlowyOverlay.of(overlayContext).insertWithAnchor(
-      widget: OverlayContainer(
-        child: this,
-        constraints: BoxConstraints.loose(const Size(240, 200)),
-      ),
-      identifier: GridFieldCellActionSheet.identifier(),
-      anchorContext: overlayContext,
-      anchorDirection: AnchorDirection.bottomWithLeftAligned,
-      delegate: this,
-    );
-  }
+  @override
+  State<StatefulWidget> createState() => _GridFieldCellActionSheetState();
+}
+
+class _GridFieldCellActionSheetState extends State<GridFieldCellActionSheet> {
+  bool _showFieldEditor = false;
 
   @override
   Widget build(BuildContext context) {
+    if (_showFieldEditor) {
+      final field = widget.cellContext.field;
+      return FieldEditor(
+        gridId: widget.cellContext.gridId,
+        fieldName: field.name,
+        typeOptionLoader: FieldTypeOptionLoader(
+          gridId: widget.cellContext.gridId,
+          field: field,
+        ),
+      );
+    }
     return BlocProvider(
-      create: (context) => getIt<FieldActionSheetBloc>(param1: cellContext),
+      create: (context) =>
+          getIt<FieldActionSheetBloc>(param1: widget.cellContext),
       child: SingleChildScrollView(
         child: Column(
           children: [
             _EditFieldButton(
-              onEdited: () {
-                FlowyOverlay.of(context).remove(identifier());
-                onEdited();
+              cellContext: widget.cellContext,
+              onTap: () {
+                setState(() {
+                  _showFieldEditor = true;
+                });
               },
             ),
             const VSpace(6),
-            _FieldOperationList(cellContext,
-                () => FlowyOverlay.of(context).remove(identifier())),
+            _FieldOperationList(widget.cellContext, () {}),
           ],
         ),
       ),
     );
   }
-
-  static String identifier() {
-    return (GridFieldCellActionSheet).toString();
-  }
-
-  @override
-  bool asBarrier() {
-    return true;
-  }
 }
 
 class _EditFieldButton extends StatelessWidget {
-  final Function() onEdited;
-  const _EditFieldButton({required this.onEdited, Key? key}) : super(key: key);
+  final GridFieldCellContext cellContext;
+  final void Function()? onTap;
+  const _EditFieldButton({required this.cellContext, Key? key, this.onTap})
+      : super(key: key);
 
   @override
   Widget build(BuildContext context) {
     final theme = context.watch<AppTheme>();
+
     return BlocBuilder<FieldActionSheetBloc, FieldActionSheetState>(
       builder: (context, state) {
         return SizedBox(
           height: GridSize.typeOptionItemHeight,
           child: FlowyButton(
-            text: FlowyText.medium(LocaleKeys.grid_field_editProperty.tr(),
-                fontSize: 12),
+            text: FlowyText.medium(
+              LocaleKeys.grid_field_editProperty.tr(),
+              fontSize: 12,
+            ),
             hoverColor: theme.hover,
-            onTap: onEdited,
+            onTap: onTap,
           ),
         );
       },
@@ -90,9 +93,9 @@ class _EditFieldButton extends StatelessWidget {
 }
 
 class _FieldOperationList extends StatelessWidget {
-  final GridFieldCellContext fieldData;
+  final GridFieldCellContext fieldContext;
   final VoidCallback onDismissed;
-  const _FieldOperationList(this.fieldData, this.onDismissed, {Key? key})
+  const _FieldOperationList(this.fieldContext, this.onDismissed, {Key? key})
       : super(key: key);
 
   @override
@@ -115,14 +118,14 @@ class _FieldOperationList extends StatelessWidget {
         bool enable = true;
         switch (action) {
           case FieldAction.delete:
-            enable = !fieldData.field.isPrimary;
+            enable = !fieldContext.field.isPrimary;
             break;
           default:
             break;
         }
 
         return FieldActionCell(
-          fieldId: fieldData.field.id,
+          fieldContext: fieldContext,
           action: action,
           onTap: onDismissed,
           enable: enable,
@@ -133,13 +136,13 @@ class _FieldOperationList extends StatelessWidget {
 }
 
 class FieldActionCell extends StatelessWidget {
-  final String fieldId;
+  final GridFieldCellContext fieldContext;
   final VoidCallback onTap;
   final FieldAction action;
   final bool enable;
 
   const FieldActionCell({
-    required this.fieldId,
+    required this.fieldContext,
     required this.action,
     required this.onTap,
     required this.enable,
@@ -150,16 +153,22 @@ class FieldActionCell extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = context.watch<AppTheme>();
     return FlowyButton(
-      text: FlowyText.medium(action.title(),
-          fontSize: 12, color: enable ? null : theme.shader4),
+      text: FlowyText.medium(
+        action.title(),
+        fontSize: 12,
+        color: enable ? null : theme.shader4,
+      ),
       hoverColor: theme.hover,
       onTap: () {
         if (enable) {
-          action.run(context);
+          action.run(context, fieldContext);
           onTap();
         }
       },
-      leftIcon: svgWidget(action.iconName(), color: theme.iconColor),
+      leftIcon: svgWidget(
+        action.iconName(),
+        color: enable ? theme.iconColor : theme.disableIconColor,
+      ),
     );
   }
 }
@@ -193,7 +202,7 @@ extension _FieldActionExtension on FieldAction {
     }
   }
 
-  void run(BuildContext context) {
+  void run(BuildContext context, GridFieldCellContext fieldContext) {
     switch (this) {
       case FieldAction.hide:
         context
@@ -201,14 +210,27 @@ extension _FieldActionExtension on FieldAction {
             .add(const FieldActionSheetEvent.hideField());
         break;
       case FieldAction.duplicate:
-        context
-            .read<FieldActionSheetBloc>()
-            .add(const FieldActionSheetEvent.duplicateField());
+        PopoverContainer.of(context).close();
+
+        FieldService(
+          gridId: fieldContext.gridId,
+          fieldId: fieldContext.field.id,
+        ).duplicateField();
+
         break;
       case FieldAction.delete:
-        context
-            .read<FieldActionSheetBloc>()
-            .add(const FieldActionSheetEvent.deleteField());
+        PopoverContainer.of(context).close();
+
+        NavigatorAlertDialog(
+          title: LocaleKeys.grid_field_deleteFieldPromptMessage.tr(),
+          confirm: () {
+            FieldService(
+              gridId: fieldContext.gridId,
+              fieldId: fieldContext.field.id,
+            ).deleteField();
+          },
+        ).show(context);
+
         break;
     }
   }

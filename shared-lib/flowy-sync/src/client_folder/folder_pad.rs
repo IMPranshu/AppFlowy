@@ -12,6 +12,7 @@ use flowy_folder_data_model::revision::{AppRevision, FolderRevision, TrashRevisi
 use lib_infra::util::move_vec_element;
 use lib_ot::core::*;
 
+use serde::Deserialize;
 use std::sync::Arc;
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -32,7 +33,7 @@ impl FolderPad {
     pub fn from_folder_rev(folder_rev: FolderRevision) -> CollaborateResult<Self> {
         let json = serde_json::to_string(&folder_rev)
             .map_err(|e| CollaborateError::internal().context(format!("Serialize to folder json str failed: {}", e)))?;
-        let delta = TextDeltaBuilder::new().insert(&json).build();
+        let delta = DeltaBuilder::new().insert(&json).build();
 
         Ok(Self { folder_rev, delta })
     }
@@ -44,7 +45,9 @@ impl FolderPad {
     pub fn from_delta(delta: FolderDelta) -> CollaborateResult<Self> {
         // TODO: Reconvert from history if delta.to_str() failed.
         let content = delta.content()?;
-        let folder_rev: FolderRevision = serde_json::from_str(&content).map_err(|e| {
+        let mut deserializer = serde_json::Deserializer::from_reader(content.as_bytes());
+
+        let folder_rev = FolderRevision::deserialize(&mut deserializer).map_err(|e| {
             tracing::error!("Deserialize folder from {} failed", content);
             return CollaborateError::internal().context(format!("Deserialize delta to folder failed: {}", e));
         })?;
@@ -340,7 +343,7 @@ impl FolderPad {
             Some(_) => {
                 let old = cloned_self.to_json()?;
                 let new = self.to_json()?;
-                match cal_diff::<PhantomAttributes>(old, new) {
+                match cal_diff::<EmptyAttributes>(old, new) {
                     None => Ok(None),
                     Some(delta) => {
                         self.delta = self.delta.compose(&delta)?;
@@ -375,7 +378,7 @@ impl FolderPad {
             Some(_) => {
                 let old = cloned_self.to_json()?;
                 let new = self.to_json()?;
-                match cal_diff::<PhantomAttributes>(old, new) {
+                match cal_diff::<EmptyAttributes>(old, new) {
                     None => Ok(None),
                     Some(delta) => {
                         self.delta = self.delta.compose(&delta)?;
@@ -426,14 +429,12 @@ impl FolderPad {
 }
 
 pub fn default_folder_delta() -> FolderDelta {
-    TextDeltaBuilder::new()
-        .insert(r#"{"workspaces":[],"trash":[]}"#)
-        .build()
+    DeltaBuilder::new().insert(r#"{"workspaces":[],"trash":[]}"#).build()
 }
 
 pub fn initial_folder_delta(folder_pad: &FolderPad) -> CollaborateResult<FolderDelta> {
     let json = folder_pad.to_json()?;
-    let delta = TextDeltaBuilder::new().insert(&json).build();
+    let delta = DeltaBuilder::new().insert(&json).build();
     Ok(delta)
 }
 
@@ -457,11 +458,12 @@ mod tests {
     #![allow(clippy::all)]
     use crate::{client_folder::folder_pad::FolderPad, entities::folder::FolderDelta};
     use chrono::Utc;
+    use serde::Deserialize;
 
     use flowy_folder_data_model::revision::{
         AppRevision, FolderRevision, TrashRevision, ViewRevision, WorkspaceRevision,
     };
-    use lib_ot::core::{OperationTransform, TextDelta, TextDeltaBuilder};
+    use lib_ot::core::{Delta, DeltaBuilder, OperationTransform};
 
     #[test]
     fn folder_add_workspace() {
@@ -478,6 +480,20 @@ mod tests {
 
         let folder_from_delta = make_folder_from_delta(initial_delta, vec![delta_1, delta_2]);
         assert_eq!(folder, folder_from_delta);
+    }
+
+    #[test]
+    fn folder_deserialize_invalid_json_test() {
+        for json in vec![
+            // No timestamp
+            r#"{"workspaces":[{"id":"1","name":"first workspace","desc":"","apps":[]}],"trash":[]}"#,
+            // Trailing characters
+            r#"{"workspaces":[{"id":"1","name":"first workspace","desc":"","apps":[]}],"trash":[]}123"#,
+        ] {
+            let mut deserializer = serde_json::Deserializer::from_reader(json.as_bytes());
+            let folder_rev = FolderRevision::deserialize(&mut deserializer).unwrap();
+            assert_eq!(folder_rev.workspaces.first().as_ref().unwrap().name, "first workspace");
+        }
     }
 
     #[test]
@@ -776,7 +792,7 @@ mod tests {
     fn test_folder() -> (FolderPad, FolderDelta, WorkspaceRevision) {
         let folder_rev = FolderRevision::default();
         let folder_json = serde_json::to_string(&folder_rev).unwrap();
-        let mut delta = TextDeltaBuilder::new().insert(&folder_json).build();
+        let mut delta = DeltaBuilder::new().insert(&folder_json).build();
 
         let mut workspace_rev = WorkspaceRevision::default();
         workspace_rev.name = "😁 my first workspace".to_owned();
@@ -820,7 +836,7 @@ mod tests {
     fn test_trash() -> (FolderPad, FolderDelta, TrashRevision) {
         let folder_rev = FolderRevision::default();
         let folder_json = serde_json::to_string(&folder_rev).unwrap();
-        let mut delta = TextDeltaBuilder::new().insert(&folder_json).build();
+        let mut delta = DeltaBuilder::new().insert(&folder_json).build();
 
         let mut trash_rev = TrashRevision::default();
         trash_rev.name = "🚽 my first trash".to_owned();
@@ -839,7 +855,7 @@ mod tests {
         (folder, delta, trash_rev)
     }
 
-    fn make_folder_from_delta(mut initial_delta: FolderDelta, deltas: Vec<TextDelta>) -> FolderPad {
+    fn make_folder_from_delta(mut initial_delta: FolderDelta, deltas: Vec<Delta>) -> FolderPad {
         for delta in deltas {
             initial_delta = initial_delta.compose(&delta).unwrap();
         }

@@ -3,8 +3,8 @@ use crate::{
     util::{contain_newline, is_newline},
 };
 use lib_ot::{
-    core::{DeltaBuilder, DeltaIterator, OpNewline, NEW_LINE},
-    rich_text::{plain_attributes, RichTextAttributeKey, RichTextDelta},
+    core::{OpNewline, OperationBuilder, OperationIterator, NEW_LINE},
+    text_delta::{empty_attributes, BuildInTextAttributeKey, TextDelta},
 };
 
 pub struct PreserveInlineFormat {}
@@ -13,21 +13,21 @@ impl InsertExt for PreserveInlineFormat {
         "PreserveInlineFormat"
     }
 
-    fn apply(&self, delta: &RichTextDelta, replace_len: usize, text: &str, index: usize) -> Option<RichTextDelta> {
+    fn apply(&self, delta: &TextDelta, replace_len: usize, text: &str, index: usize) -> Option<TextDelta> {
         if contain_newline(text) {
             return None;
         }
 
-        let mut iter = DeltaIterator::new(delta);
+        let mut iter = OperationIterator::new(delta);
         let prev = iter.next_op_with_len(index)?;
         if OpNewline::parse(&prev).is_contain() {
             return None;
         }
 
         let mut attributes = prev.get_attributes();
-        if attributes.is_empty() || !attributes.contains_key(&RichTextAttributeKey::Link) {
+        if attributes.is_empty() || !attributes.contains_key(BuildInTextAttributeKey::Link.as_ref()) {
             return Some(
-                DeltaBuilder::new()
+                OperationBuilder::new()
                     .retain(index + replace_len)
                     .insert_with_attributes(text, attributes)
                     .build(),
@@ -36,15 +36,15 @@ impl InsertExt for PreserveInlineFormat {
 
         let next = iter.next_op();
         match &next {
-            None => attributes = plain_attributes(),
+            None => attributes = empty_attributes(),
             Some(next) => {
                 if OpNewline::parse(next).is_equal() {
-                    attributes = plain_attributes();
+                    attributes = empty_attributes();
                 }
             }
         }
 
-        let new_delta = DeltaBuilder::new()
+        let new_delta = OperationBuilder::new()
             .retain(index + replace_len)
             .insert_with_attributes(text, attributes)
             .build();
@@ -59,12 +59,12 @@ impl InsertExt for PreserveLineFormatOnSplit {
         "PreserveLineFormatOnSplit"
     }
 
-    fn apply(&self, delta: &RichTextDelta, replace_len: usize, text: &str, index: usize) -> Option<RichTextDelta> {
+    fn apply(&self, delta: &TextDelta, replace_len: usize, text: &str, index: usize) -> Option<TextDelta> {
         if !is_newline(text) {
             return None;
         }
 
-        let mut iter = DeltaIterator::new(delta);
+        let mut iter = OperationIterator::new(delta);
         let prev = iter.next_op_with_len(index)?;
         if OpNewline::parse(&prev).is_end() {
             return None;
@@ -76,12 +76,12 @@ impl InsertExt for PreserveLineFormatOnSplit {
             return None;
         }
 
-        let mut new_delta = RichTextDelta::new();
-        new_delta.retain(index + replace_len, plain_attributes());
+        let mut new_delta = TextDelta::new();
+        new_delta.retain(index + replace_len, empty_attributes());
 
         if newline_status.is_contain() {
             debug_assert!(!next.has_attribute());
-            new_delta.insert(NEW_LINE, plain_attributes());
+            new_delta.insert(NEW_LINE, empty_attributes());
             return Some(new_delta);
         }
 

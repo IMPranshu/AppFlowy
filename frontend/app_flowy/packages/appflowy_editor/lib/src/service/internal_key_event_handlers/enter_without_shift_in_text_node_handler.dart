@@ -1,14 +1,10 @@
-import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+import 'dart:collection';
 
-import 'package:appflowy_editor/src/document/attributes.dart';
-import 'package:appflowy_editor/src/document/node.dart';
-import 'package:appflowy_editor/src/document/position.dart';
-import 'package:appflowy_editor/src/document/selection.dart';
+import 'package:appflowy_editor/appflowy_editor.dart';
+import 'package:flutter/material.dart';
+
 import 'package:appflowy_editor/src/extensions/path_extensions.dart';
-import 'package:appflowy_editor/src/operation/transaction_builder.dart';
-import 'package:appflowy_editor/src/render/rich_text/rich_text_style.dart';
-import 'package:appflowy_editor/src/service/keyboard_service.dart';
+import './number_list_helper.dart';
 
 /// Handle some cases where enter is pressed and shift is not pressed.
 ///
@@ -18,12 +14,8 @@ import 'package:appflowy_editor/src/service/keyboard_service.dart';
 /// 2. Single selection and the selected node is [TextNode]
 ///   2.1 split the node into two nodes with style
 ///   2.2 or insert a empty text node before.
-AppFlowyKeyEventHandler enterWithoutShiftInTextNodesHandler =
+ShortcutEventHandler enterWithoutShiftInTextNodesHandler =
     (editorState, event) {
-  if (event.logicalKey != LogicalKeyboardKey.enter || event.isShiftPressed) {
-    return KeyEventResult.ignored;
-  }
-
   var selection = editorState.service.selectionService.currentSelection.value;
   var nodes = editorState.service.selectionService.currentSelectedNodes;
   if (selection == null) {
@@ -41,6 +33,7 @@ AppFlowyKeyEventHandler enterWithoutShiftInTextNodesHandler =
 
   // Multiple selection
   if (!selection.isSingle) {
+    final startNode = editorState.document.nodeAtPath(selection.start.path)!;
     final length = textNodes.length;
     final List<TextNode> subTextNodes =
         length >= 3 ? textNodes.sublist(1, textNodes.length - 1) : [];
@@ -61,6 +54,13 @@ AppFlowyKeyEventHandler enterWithoutShiftInTextNodesHandler =
       )
       ..afterSelection = afterSelection
       ..commit();
+
+    if (startNode is TextNode &&
+        startNode.subtype == BuiltInAttributeKey.numberList) {
+      makeFollowingNodesIncremental(
+          editorState, selection.start.path, afterSelection);
+    }
+
     return KeyEventResult.handled;
   }
 
@@ -79,58 +79,127 @@ AppFlowyKeyEventHandler enterWithoutShiftInTextNodesHandler =
         Position(path: textNode.path, offset: 0),
       );
       TransactionBuilder(editorState)
-        ..updateNode(
-            textNode,
-            Attributes.fromIterable(
-              StyleKey.globalStyleKeys,
-              value: (_) => null,
-            ))
+        ..updateNode(textNode, {
+          BuiltInAttributeKey.subtype: null,
+        })
         ..afterSelection = afterSelection
         ..commit();
+
+      final nextNode = textNode.next;
+      if (nextNode is TextNode &&
+          nextNode.subtype == BuiltInAttributeKey.numberList) {
+        makeFollowingNodesIncremental(
+            editorState, textNode.path, afterSelection,
+            beginNum: 0);
+      }
     } else {
+      final subtype = textNode.subtype;
       final afterSelection = Selection.collapsed(
         Position(path: textNode.path.next, offset: 0),
       );
-      TransactionBuilder(editorState)
-        ..insertNode(
-          textNode.path,
-          TextNode.empty(),
-        )
-        ..afterSelection = afterSelection
-        ..commit();
+
+      if (subtype == BuiltInAttributeKey.numberList) {
+        final prevNumber =
+            textNode.attributes[BuiltInAttributeKey.number] as int;
+        final newNode = TextNode.empty();
+        newNode.attributes[BuiltInAttributeKey.subtype] =
+            BuiltInAttributeKey.numberList;
+        newNode.attributes[BuiltInAttributeKey.number] = prevNumber;
+        final insertPath = textNode.path;
+        TransactionBuilder(editorState)
+          ..insertNode(
+            insertPath,
+            newNode,
+          )
+          ..afterSelection = afterSelection
+          ..commit();
+
+        makeFollowingNodesIncremental(editorState, insertPath, afterSelection,
+            beginNum: prevNumber);
+      } else {
+        bool needCopyAttributes = ![
+          BuiltInAttributeKey.heading,
+          BuiltInAttributeKey.quote,
+        ].contains(subtype);
+        TransactionBuilder(editorState)
+          ..insertNode(
+            textNode.path,
+            textNode.copyWith(
+              children: LinkedList(),
+              delta: Delta(),
+              attributes: needCopyAttributes ? null : {},
+            ),
+          )
+          ..afterSelection = afterSelection
+          ..commit();
+      }
     }
     return KeyEventResult.handled;
   }
 
   // Otherwise,
   //  split the node into two nodes with style
-  final needCopyAttributes = StyleKey.globalStyleKeys
-      .where((key) => key != StyleKey.heading)
-      .contains(textNode.subtype);
-  Attributes attributes = {};
-  if (needCopyAttributes) {
-    attributes = Attributes.from(textNode.attributes);
-    if (attributes.check) {
-      attributes[StyleKey.checkbox] = false;
-    }
-  }
+  Attributes attributes = _attributesFromPreviousLine(textNode);
+
+  final nextPath = textNode.path.next;
   final afterSelection = Selection.collapsed(
-    Position(path: textNode.path.next, offset: 0),
+    Position(path: nextPath, offset: 0),
   );
-  TransactionBuilder(editorState)
-    ..insertNode(
-      textNode.path.next,
-      textNode.copyWith(
-        attributes: attributes,
-        delta: textNode.delta.slice(selection.end.offset),
-      ),
-    )
-    ..deleteText(
-      textNode,
-      selection.start.offset,
-      textNode.toRawString().length - selection.start.offset,
-    )
-    ..afterSelection = afterSelection
-    ..commit();
+
+  final transactionBuilder = TransactionBuilder(editorState);
+  transactionBuilder.insertNode(
+    textNode.path.next,
+    textNode.copyWith(
+      attributes: attributes,
+      delta: textNode.delta.slice(selection.end.offset),
+    ),
+  );
+  transactionBuilder.deleteText(
+    textNode,
+    selection.start.offset,
+    textNode.toRawString().length - selection.start.offset,
+  );
+  if (textNode.children.isNotEmpty) {
+    final children = textNode.children.toList(growable: false);
+    transactionBuilder.deleteNodes(children);
+  }
+  transactionBuilder.afterSelection = afterSelection;
+  transactionBuilder.commit();
+
+  // If the new type of a text node is number list,
+  // the numbers of the following nodes should be incremental.
+  if (textNode.subtype == BuiltInAttributeKey.numberList) {
+    makeFollowingNodesIncremental(editorState, nextPath, afterSelection);
+  }
+
   return KeyEventResult.handled;
 };
+
+Attributes _attributesFromPreviousLine(TextNode textNode) {
+  final prevAttributes = textNode.attributes;
+  final subType = textNode.subtype;
+  if (subType == null ||
+      subType == BuiltInAttributeKey.heading ||
+      subType == BuiltInAttributeKey.quote) {
+    return {};
+  }
+
+  final copy = Attributes.from(prevAttributes);
+  if (subType == BuiltInAttributeKey.numberList) {
+    return _nextNumberAttributesFromPreviousLine(copy, textNode);
+  }
+
+  if (subType == BuiltInAttributeKey.checkbox) {
+    copy[BuiltInAttributeKey.checkbox] = false;
+    return copy;
+  }
+
+  return copy;
+}
+
+Attributes _nextNumberAttributesFromPreviousLine(
+    Attributes copy, TextNode textNode) {
+  final prevNum = textNode.attributes[BuiltInAttributeKey.number] as int?;
+  copy[BuiltInAttributeKey.number] = prevNum == null ? 1 : prevNum + 1;
+  return copy;
+}

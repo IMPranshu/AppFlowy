@@ -1,12 +1,13 @@
 import 'package:appflowy_editor/src/document/node.dart';
 import 'package:appflowy_editor/src/editor_state.dart';
 import 'package:appflowy_editor/src/infra/flowy_svg.dart';
+import 'package:appflowy_editor/src/render/rich_text/built_in_text_widget.dart';
 import 'package:appflowy_editor/src/render/rich_text/default_selectable.dart';
 import 'package:appflowy_editor/src/render/rich_text/flowy_rich_text.dart';
-import 'package:appflowy_editor/src/render/rich_text/rich_text_style.dart';
 import 'package:appflowy_editor/src/render/selection/selectable.dart';
 import 'package:appflowy_editor/src/service/render_plugin_service.dart';
 import 'package:flutter/material.dart';
+import 'package:appflowy_editor/src/extensions/text_style_extension.dart';
 
 class QuotedTextNodeWidgetBuilder extends NodeWidgetBuilder<TextNode> {
   @override
@@ -24,14 +25,16 @@ class QuotedTextNodeWidgetBuilder extends NodeWidgetBuilder<TextNode> {
       });
 }
 
-class QuotedTextNodeWidget extends StatefulWidget {
+class QuotedTextNodeWidget extends BuiltInTextWidget {
   const QuotedTextNodeWidget({
     Key? key,
     required this.textNode,
     required this.editorState,
   }) : super(key: key);
 
+  @override
   final TextNode textNode;
+  @override
   final EditorState editorState;
 
   @override
@@ -41,53 +44,51 @@ class QuotedTextNodeWidget extends StatefulWidget {
 // customize
 
 class _QuotedTextNodeWidgetState extends State<QuotedTextNodeWidget>
-    with Selectable, DefaultSelectable {
+    with SelectableMixin, DefaultSelectable, BuiltInStyleMixin {
   @override
   final iconKey = GlobalKey();
 
   final _richTextKey = GlobalKey(debugLabel: 'quoted_text');
-  final _iconWidth = 20.0;
-  final _iconRightPadding = 5.0;
 
   @override
-  Selectable<StatefulWidget> get forward =>
-      _richTextKey.currentState as Selectable;
+  SelectableMixin<StatefulWidget> get forward =>
+      _richTextKey.currentState as SelectableMixin;
+
+  @override
+  Offset get baseOffset {
+    return super.baseOffset.translate(0, padding.top);
+  }
 
   @override
   Widget build(BuildContext context) {
-    final topPadding = RichTextStyle.fromTextNode(widget.textNode).topPadding;
-    return SizedBox(
-        width: defaultMaxTextNodeWidth,
-        child: Padding(
-          padding: EdgeInsets.only(bottom: defaultLinePadding),
-          child: IntrinsicHeight(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                FlowySvg(
-                  key: iconKey,
-                  width: _iconWidth,
-                  padding: EdgeInsets.only(
-                      top: topPadding, right: _iconRightPadding),
-                  name: 'quote',
-                ),
-                Expanded(
-                  child: FlowyRichText(
-                    key: _richTextKey,
-                    placeholderText: 'Quote',
-                    textNode: widget.textNode,
-                    editorState: widget.editorState,
-                  ),
-                ),
-              ],
+    return Padding(
+      padding: padding,
+      child: IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            FlowySvg(
+              key: iconKey,
+              width: iconSize?.width,
+              padding: iconPadding,
+              name: 'quote',
             ),
-          ),
-        ));
-  }
-
-  double get _quoteHeight {
-    final lines =
-        widget.textNode.toRawString().characters.where((c) => c == '\n').length;
-    return (lines + 1) * _iconWidth;
+            Flexible(
+              child: FlowyRichText(
+                key: _richTextKey,
+                placeholderText: 'Quote',
+                textNode: widget.textNode,
+                textSpanDecorator: (textSpan) =>
+                    textSpan.updateTextStyle(textStyle),
+                placeholderTextSpanDecorator: (textSpan) =>
+                    textSpan.updateTextStyle(textStyle),
+                lineHeight: widget.editorState.editorStyle.textStyle.lineHeight,
+                editorState: widget.editorState,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }

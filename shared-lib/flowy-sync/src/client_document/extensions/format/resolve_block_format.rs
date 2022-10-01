@@ -1,6 +1,8 @@
+use lib_ot::core::AttributeEntry;
+use lib_ot::text_delta::is_block;
 use lib_ot::{
-    core::{DeltaBuilder, DeltaIterator, Interval},
-    rich_text::{plain_attributes, AttributeScope, RichTextAttribute, RichTextDelta},
+    core::{Interval, OperationBuilder, OperationIterator},
+    text_delta::{empty_attributes, AttributeScope, TextDelta},
 };
 
 use crate::{
@@ -14,19 +16,19 @@ impl FormatExt for ResolveBlockFormat {
         "ResolveBlockFormat"
     }
 
-    fn apply(&self, delta: &RichTextDelta, interval: Interval, attribute: &RichTextAttribute) -> Option<RichTextDelta> {
-        if attribute.scope != AttributeScope::Block {
+    fn apply(&self, delta: &TextDelta, interval: Interval, attribute: &AttributeEntry) -> Option<TextDelta> {
+        if !is_block(&attribute.key) {
             return None;
         }
 
-        let mut new_delta = DeltaBuilder::new().retain(interval.start).build();
-        let mut iter = DeltaIterator::from_offset(delta, interval.start);
+        let mut new_delta = OperationBuilder::new().retain(interval.start).build();
+        let mut iter = OperationIterator::from_offset(delta, interval.start);
         let mut start = 0;
         let end = interval.size();
         while start < end && iter.has_next() {
             let next_op = iter.next_op_with_len(end - start).unwrap();
             match find_newline(next_op.get_data()) {
-                None => new_delta.retain(next_op.len(), plain_attributes()),
+                None => new_delta.retain(next_op.len(), empty_attributes()),
                 Some(_) => {
                     let tmp_delta = line_break(&next_op, attribute, AttributeScope::Block);
                     new_delta.extend(tmp_delta);
@@ -40,9 +42,9 @@ impl FormatExt for ResolveBlockFormat {
             let op = iter.next_op().expect("Unexpected None, iter.has_next() must return op");
 
             match find_newline(op.get_data()) {
-                None => new_delta.retain(op.len(), plain_attributes()),
+                None => new_delta.retain(op.len(), empty_attributes()),
                 Some(line_break) => {
-                    new_delta.retain(line_break, plain_attributes());
+                    new_delta.retain(line_break, empty_attributes());
                     new_delta.retain(1, attribute.clone().into());
                     break;
                 }

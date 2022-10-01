@@ -1,7 +1,7 @@
 import 'dart:async';
 
+import 'package:appflowy_board/src/widgets/board.dart';
 import 'package:flutter/material.dart';
-
 import '../../utils/log.dart';
 import 'drag_state.dart';
 import 'drag_target.dart';
@@ -35,13 +35,13 @@ abstract class DragTargetInterceptor {
 
 abstract class OverlapDragTargetDelegate {
   void cancel();
-  void moveTo(
+  void dragTargetDidMoveToReorderFlex(
     String reorderFlexId,
     FlexDragTargetData dragTargetData,
     int dragTargetIndex,
   );
 
-  int canMoveTo(String dragTargetId);
+  int getInsertedIndex(String dragTargetId);
 }
 
 /// [OverlappingDragTargetInterceptor] is used to receive the overlapping
@@ -55,13 +55,14 @@ class OverlappingDragTargetInterceptor extends DragTargetInterceptor {
   final String reorderFlexId;
   final List<String> acceptedReorderFlexId;
   final OverlapDragTargetDelegate delegate;
-  final List<ColumnKey> columnKeys = [];
+  final AppFlowyBoardState columnsState;
   Timer? _delayOperation;
 
   OverlappingDragTargetInterceptor({
     required this.delegate,
     required this.reorderFlexId,
     required this.acceptedReorderFlexId,
+    required this.columnsState,
   });
 
   @override
@@ -79,36 +80,36 @@ class OverlappingDragTargetInterceptor extends DragTargetInterceptor {
     if (dragTargetId == dragTargetData.reorderFlexId) {
       delegate.cancel();
     } else {
+      // Ignore the event if the dragTarget overlaps with the other column's dragTargets.
+      final columnKeys = columnsState.groupDragTargetKeys[dragTargetId];
+      if (columnKeys != null) {
+        final keys = columnKeys.values.toList();
+        if (dragTargetData.isOverlapWithWidgets(keys)) {
+          _delayOperation?.cancel();
+          return true;
+        }
+      }
+
       /// The priority of the column interactions is high than the cross column.
       /// Workaround: delay 100 milliseconds to lower the cross column event priority.
+      ///
       _delayOperation?.cancel();
       _delayOperation = Timer(const Duration(milliseconds: 100), () {
-        final index = delegate.canMoveTo(dragTargetId);
+        final index = delegate.getInsertedIndex(dragTargetId);
         if (index != -1) {
           Log.trace(
               '[$OverlappingDragTargetInterceptor] move to $dragTargetId at $index');
-          delegate.moveTo(dragTargetId, dragTargetData, index);
+          delegate.dragTargetDidMoveToReorderFlex(
+              dragTargetId, dragTargetData, index);
 
-          // final columnIndex = columnKeys
-          //     .indexWhere((element) => element.columnId == dragTargetId);
-          // if (columnIndex != -1) {
-          //   final state = columnKeys[columnIndex].key.currentState;
-          //   if (state is ReorderFlexState) {
-          //     state.handleOnWillAccept(context, index);
-          //   }
-          // }
+          columnsState.reorderFlexActionMap[dragTargetId]
+              ?.resetDragTargetIndex(index);
         }
       });
     }
 
     return true;
   }
-}
-
-class ColumnKey {
-  String columnId;
-  GlobalKey key;
-  ColumnKey({required this.columnId, required this.key});
 }
 
 abstract class CrossReorderFlexDragTargetDelegate {
@@ -130,6 +131,7 @@ class CrossReorderFlexDragTargetInterceptor extends DragTargetInterceptor {
   final String reorderFlexId;
   final List<String> acceptedReorderFlexIds;
   final CrossReorderFlexDragTargetDelegate delegate;
+
   @override
   final ReorderFlexDraggableTargetBuilder? draggableTargetBuilder;
 
@@ -151,7 +153,7 @@ class CrossReorderFlexDragTargetInterceptor extends DragTargetInterceptor {
       /// it means the dragTarget is dragging on the top of its own list.
       /// Otherwise, it means the dargTarget was moved to another list.
       Log.trace(
-          "[$CrossReorderFlexDragTargetInterceptor] $reorderFlexId accept ${dragTargetData.reorderFlexId} ${reorderFlexId != dragTargetData.reorderFlexId}");
+          "[$CrossReorderFlexDragTargetInterceptor] $reorderFlexId should accept ${dragTargetData.reorderFlexId} : ${reorderFlexId != dragTargetData.reorderFlexId}");
       return reorderFlexId != dragTargetData.reorderFlexId;
     } else {
       Log.trace(
@@ -163,13 +165,13 @@ class CrossReorderFlexDragTargetInterceptor extends DragTargetInterceptor {
   @override
   void onAccept(FlexDragTargetData dragTargetData) {
     Log.trace(
-        '[$CrossReorderFlexDragTargetInterceptor] Column:[$reorderFlexId] on onAccept');
+        '[$CrossReorderFlexDragTargetInterceptor] Group:[$reorderFlexId] on onAccept');
   }
 
   @override
   void onLeave(FlexDragTargetData dragTargetData) {
     Log.trace(
-        '[$CrossReorderFlexDragTargetInterceptor] Column:[$reorderFlexId] on leave');
+        '[$CrossReorderFlexDragTargetInterceptor] Group:[$reorderFlexId] on leave');
   }
 
   @override
@@ -187,7 +189,7 @@ class CrossReorderFlexDragTargetInterceptor extends DragTargetInterceptor {
     );
 
     Log.debug(
-        '[$CrossReorderFlexDragTargetInterceptor] dargTargetIndex: $dragTargetIndex, reorderFlexId: $reorderFlexId');
+        '[$CrossReorderFlexDragTargetInterceptor] isNewDragTarget: $isNewDragTarget, dargTargetIndex: $dragTargetIndex, reorderFlexId: $reorderFlexId');
 
     if (isNewDragTarget == false) {
       delegate.updateDragTargetData(reorderFlexId, dragTargetIndex);

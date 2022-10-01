@@ -1,6 +1,7 @@
 import 'package:app_flowy/plugins/grid/application/field/type_option/number_bloc.dart';
 import 'package:app_flowy/plugins/grid/application/field/type_option/number_format_bloc.dart';
 import 'package:app_flowy/plugins/grid/application/field/type_option/type_option_context.dart';
+import 'package:appflowy_popover/appflowy_popover.dart';
 import 'package:flowy_infra/image.dart';
 import 'package:flowy_infra/theme.dart';
 import 'package:flowy_infra_ui/flowy_infra_ui.dart';
@@ -23,10 +24,10 @@ class NumberTypeOptionWidgetBuilder extends TypeOptionWidgetBuilder {
 
   NumberTypeOptionWidgetBuilder(
     NumberTypeOptionContext typeOptionContext,
-    TypeOptionOverlayDelegate overlayDelegate,
+    PopoverMutex popoverMutex,
   ) : _widget = NumberTypeOptionWidget(
           typeOptionContext: typeOptionContext,
-          overlayDelegate: overlayDelegate,
+          popoverMutex: popoverMutex,
         );
 
   @override
@@ -34,11 +35,11 @@ class NumberTypeOptionWidgetBuilder extends TypeOptionWidgetBuilder {
 }
 
 class NumberTypeOptionWidget extends TypeOptionWidget {
-  final TypeOptionOverlayDelegate overlayDelegate;
   final NumberTypeOptionContext typeOptionContext;
+  final PopoverMutex popoverMutex;
   const NumberTypeOptionWidget({
     required this.typeOptionContext,
-    required this.overlayDelegate,
+    required this.popoverMutex,
     Key? key,
   }) : super(key: key);
 
@@ -54,34 +55,38 @@ class NumberTypeOptionWidget extends TypeOptionWidget {
           listener: (context, state) =>
               typeOptionContext.typeOption = state.typeOption,
           builder: (context, state) {
-            return FlowyButton(
-              text: Row(
-                children: [
-                  FlowyText.medium(LocaleKeys.grid_field_numberFormat.tr(),
-                      fontSize: 12),
-                  // const HSpace(6),
-                  const Spacer(),
-                  FlowyText.regular(state.typeOption.format.title(),
-                      fontSize: 12),
-                ],
+            return AppFlowyPopover(
+              mutex: popoverMutex,
+              triggerActions:
+                  PopoverTriggerFlags.hover | PopoverTriggerFlags.click,
+              offset: const Offset(20, 0),
+              constraints: BoxConstraints.loose(const Size(460, 440)),
+              child: FlowyButton(
+                margin: GridSize.typeOptionContentInsets,
+                hoverColor: theme.hover,
+                rightIcon: svgWidget("grid/more", color: theme.iconColor),
+                text: Row(
+                  children: [
+                    FlowyText.medium(LocaleKeys.grid_field_numberFormat.tr(),
+                        fontSize: 12),
+                    // const HSpace(6),
+                    const Spacer(),
+                    FlowyText.regular(state.typeOption.format.title(),
+                        fontSize: 12),
+                  ],
+                ),
               ),
-              margin: GridSize.typeOptionContentInsets,
-              hoverColor: theme.hover,
-              onTap: () {
-                final list = NumberFormatList(
+              popupBuilder: (BuildContext popoverContext) {
+                return NumberFormatList(
                   onSelected: (format) {
                     context
                         .read<NumberTypeOptionBloc>()
                         .add(NumberTypeOptionEvent.didSelectFormat(format));
+                    PopoverContainer.of(popoverContext).close();
                   },
                   selectedFormat: state.typeOption.format,
                 );
-                overlayDelegate.showOverlay(
-                  context,
-                  list,
-                );
               },
-              rightIcon: svgWidget("grid/more", color: theme.iconColor),
             );
           },
         ),
@@ -90,10 +95,10 @@ class NumberTypeOptionWidget extends TypeOptionWidget {
   }
 }
 
-typedef _SelectNumberFormatCallback = Function(NumberFormat format);
+typedef SelectNumberFormatCallback = Function(NumberFormat format);
 
 class NumberFormatList extends StatelessWidget {
-  final _SelectNumberFormatCallback onSelected;
+  final SelectNumberFormatCallback onSelected;
   final NumberFormat selectedFormat;
   const NumberFormatList(
       {required this.selectedFormat, required this.onSelected, Key? key})
@@ -109,6 +114,7 @@ class NumberFormatList extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const _FilterTextField(),
+            const VSpace(10),
             BlocBuilder<NumberFormatBloc, NumberFormatState>(
               builder: (context, state) {
                 final cells = state.formats.map((format) {
@@ -117,8 +123,6 @@ class NumberFormatList extends StatelessWidget {
                       format: format,
                       onSelected: (format) {
                         onSelected(format);
-                        FlowyOverlay.of(context)
-                            .remove(NumberFormatList.identifier());
                       });
                 }).toList();
 
@@ -140,10 +144,6 @@ class NumberFormatList extends StatelessWidget {
         ),
       ),
     );
-  }
-
-  static String identifier() {
-    return (NumberFormatList).toString();
   }
 }
 

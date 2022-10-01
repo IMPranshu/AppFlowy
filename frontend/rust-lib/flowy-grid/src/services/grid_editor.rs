@@ -18,7 +18,7 @@ use flowy_sync::client_grid::{GridRevisionChangeset, GridRevisionPad, JsonDeseri
 use flowy_sync::entities::revision::Revision;
 use flowy_sync::errors::CollaborateResult;
 use flowy_sync::util::make_text_delta_from_revisions;
-use lib_infra::future::FutureResult;
+use lib_infra::future::{wrap_future, FutureResult};
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -185,13 +185,14 @@ impl GridRevisionEditor {
         }
     }
 
+    // Replaces the field revision with new field revision.
     pub async fn replace_field(&self, field_rev: Arc<FieldRevision>) -> FlowyResult<()> {
         let field_id = field_rev.id.clone();
         let _ = self
             .modify(|grid_pad| Ok(grid_pad.replace_field_rev(field_rev.clone())?))
             .await?;
 
-        match self.view_manager.did_update_field(&field_rev.id).await {
+        match self.view_manager.did_update_field(&field_rev.id, false).await {
             Ok(_) => {}
             Err(e) => tracing::error!("View manager update field failed: {:?}", e),
         }
@@ -204,6 +205,11 @@ impl GridRevisionEditor {
         let field_order = FieldIdPB::from(field_id);
         let notified_changeset = FieldChangesetPB::delete(&self.grid_id, vec![field_order]);
         let _ = self.notify_did_update_grid(notified_changeset).await?;
+        Ok(())
+    }
+
+    pub async fn group_by_field(&self, field_id: &str) -> FlowyResult<()> {
+        let _ = self.view_manager.group_by_field(field_id).await?;
         Ok(())
     }
 
@@ -221,7 +227,9 @@ impl GridRevisionEditor {
 
         let type_option_json_builder = |field_type: &FieldTypeRevision| -> String {
             let field_type: FieldType = field_type.into();
-            return default_type_option_builder_from_type(&field_type).entry().json_str();
+            return default_type_option_builder_from_type(&field_type)
+                .data_format()
+                .json_str();
         };
 
         let _ = self
@@ -268,6 +276,7 @@ impl GridRevisionEditor {
     }
 
     async fn update_field_rev(&self, params: FieldChangesetParams, field_type: FieldType) -> FlowyResult<()> {
+        let mut is_type_option_changed = false;
         let _ = self
             .modify(|grid| {
                 let deserializer = TypeOptionJsonDeserializer(field_type);
@@ -308,6 +317,7 @@ impl GridRevisionEditor {
                             Ok(json_str) => {
                                 let field_type = field.ty;
                                 field.insert_type_option_str(&field_type, json_str);
+                                is_type_option_changed = true;
                                 is_changed = Some(())
                             }
                             Err(err) => {
@@ -322,7 +332,11 @@ impl GridRevisionEditor {
             })
             .await?;
 
-        match self.view_manager.did_update_field(&params.field_id).await {
+        match self
+            .view_manager
+            .did_update_field(&params.field_id, is_type_option_changed)
+            .await
+        {
             Ok(_) => {}
             Err(e) => tracing::error!("View manager update field failed: {:?}", e),
         }
@@ -354,6 +368,7 @@ impl GridRevisionEditor {
         Ok(row_pb)
     }
 
+    #[tracing::instrument(level = "trace", skip_all, err)]
     pub async fn move_group(&self, params: MoveGroupParams) -> FlowyResult<()> {
         let _ = self.view_manager.move_group(params).await?;
         Ok(())
@@ -409,6 +424,7 @@ impl GridRevisionEditor {
 
     pub async fn delete_row(&self, row_id: &str) -> FlowyResult<()> {
         let row_rev = self.block_manager.delete_row(row_id).await?;
+        tracing::trace!("Did delete row:{:?}", row_rev);
         if let Some(row_rev) = row_rev {
             self.view_manager.did_delete_row(row_rev).await;
         }
@@ -420,14 +436,18 @@ impl GridRevisionEditor {
     }
 
     pub async fn get_cell(&self, params: &GridCellIdParams) -> Option<GridCellPB> {
-        let cell_bytes = self.get_cell_bytes(params).await?;
-        Some(GridCellPB::new(&params.field_id, cell_bytes.to_vec()))
+        let (field_type, cell_bytes) = self.decode_any_cell_data(params).await?;
+        Some(GridCellPB::new(&params.field_id, field_type, cell_bytes.to_vec()))
     }
 
     pub async fn get_cell_bytes(&self, params: &GridCellIdParams) -> Option<CellBytes> {
+        let (_, cell_data) = self.decode_any_cell_data(params).await?;
+        Some(cell_data)
+    }
+
+    async fn decode_any_cell_data(&self, params: &GridCellIdParams) -> Option<(FieldType, CellBytes)> {
         let field_rev = self.get_field_rev(&params.field_id).await?;
         let row_rev = self.block_manager.get_row_rev(&params.row_id).await.ok()??;
-
         let cell_rev = row_rev.cells.get(&params.field_id)?.clone();
         Some(decode_any_cell_data(cell_rev.data, &field_rev))
     }
@@ -521,12 +541,20 @@ impl GridRevisionEditor {
         self.view_manager.get_setting().await
     }
 
-    pub async fn get_grid_filter(&self) -> FlowyResult<Vec<GridFilterConfiguration>> {
+    pub async fn get_grid_filter(&self) -> FlowyResult<Vec<GridFilterConfigurationPB>> {
         self.view_manager.get_filters().await
     }
 
-    pub async fn update_filter(&self, params: CreateFilterParams) -> FlowyResult<()> {
-        let _ = self.view_manager.update_filter(params).await?;
+    pub async fn insert_group(&self, params: InsertGroupParams) -> FlowyResult<()> {
+        self.view_manager.insert_or_update_group(params).await
+    }
+
+    pub async fn delete_group(&self, params: DeleteGroupParams) -> FlowyResult<()> {
+        self.view_manager.delete_group(params).await
+    }
+
+    pub async fn create_filter(&self, params: InsertFilterParams) -> FlowyResult<()> {
+        let _ = self.view_manager.insert_or_update_filter(params).await?;
         Ok(())
     }
 
@@ -591,34 +619,33 @@ impl GridRevisionEditor {
         match self.block_manager.get_row_rev(&from_row_id).await? {
             None => tracing::warn!("Move row failed, can not find the row:{}", from_row_id),
             Some(row_rev) => {
-                if let Some(row_changeset) = self
-                    .view_manager
-                    .move_group_row(row_rev, to_group_id, to_row_id.clone())
-                    .await
-                {
-                    tracing::trace!("Move group row cause row data changed: {:?}", row_changeset);
+                let block_manager = self.block_manager.clone();
+                self.view_manager
+                    .move_group_row(row_rev, to_group_id, to_row_id.clone(), |row_changeset| {
+                        wrap_future(async move {
+                            tracing::trace!("Move group row cause row data changed: {:?}", row_changeset);
+                            let cell_changesets = row_changeset
+                                .cell_by_field_id
+                                .into_iter()
+                                .map(|(field_id, cell_rev)| CellChangesetPB {
+                                    grid_id: view_id.clone(),
+                                    row_id: row_changeset.row_id.clone(),
+                                    field_id,
+                                    content: cell_rev.data,
+                                })
+                                .collect::<Vec<CellChangesetPB>>();
 
-                    let cell_changesets = row_changeset
-                        .cell_by_field_id
-                        .into_iter()
-                        .map(|(field_id, cell_rev)| CellChangesetPB {
-                            grid_id: view_id.clone(),
-                            row_id: row_changeset.row_id.clone(),
-                            field_id,
-                            content: cell_rev.data,
+                            for cell_changeset in cell_changesets {
+                                match block_manager.update_cell(cell_changeset).await {
+                                    Ok(_) => {}
+                                    Err(e) => tracing::error!("Apply cell changeset error:{:?}", e),
+                                }
+                            }
                         })
-                        .collect::<Vec<CellChangesetPB>>();
-
-                    for cell_changeset in cell_changesets {
-                        match self.block_manager.update_cell(cell_changeset).await {
-                            Ok(_) => {}
-                            Err(e) => tracing::error!("Apply cell changeset error:{:?}", e),
-                        }
-                    }
-                }
+                    })
+                    .await?;
             }
         }
-
         Ok(())
     }
 
@@ -654,6 +681,7 @@ impl GridRevisionEditor {
 
     pub async fn duplicate_grid(&self) -> FlowyResult<BuildGridContext> {
         let grid_pad = self.grid_pad.read().await;
+        let grid_view_revision_data = self.view_manager.duplicate_grid_view().await?;
         let original_blocks = grid_pad.get_block_meta_revs();
         let (duplicated_fields, duplicated_blocks) = grid_pad.duplicate_grid_block_meta().await;
 
@@ -679,6 +707,7 @@ impl GridRevisionEditor {
             field_revs: duplicated_fields.into_iter().map(Arc::new).collect(),
             block_metas: duplicated_blocks,
             blocks: blocks_meta_data,
+            grid_view_revision_data,
         })
     }
 
@@ -825,7 +854,7 @@ impl JsonDeserializer for TypeOptionJsonDeserializer {
     fn deserialize(&self, type_option_data: Vec<u8>) -> CollaborateResult<String> {
         // The type_option_data sent from Dart is serialized by protobuf.
         let builder = type_option_builder_from_bytes(type_option_data, &self.0);
-        let json = builder.entry().json_str();
+        let json = builder.data_format().json_str();
         tracing::trace!("Deserialize type option data to: {}", json);
         Ok(json)
     }

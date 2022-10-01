@@ -36,7 +36,7 @@ class TransactionBuilder {
   /// Inserts a sequence of nodes at the position of path.
   insertNodes(Path path, List<Node> nodes) {
     beforeSelection = state.cursorSelection;
-    add(InsertOperation(path, nodes.map((node) => node.deepClone()).toList()));
+    add(InsertOperation(path, nodes.map((node) => node.copyWith()).toList()));
   }
 
   /// Updates the attributes of nodes.
@@ -75,7 +75,7 @@ class TransactionBuilder {
       nodes.add(node);
     }
 
-    add(DeleteOperation(path, nodes.map((node) => node.deepClone()).toList()));
+    add(DeleteOperation(path, nodes.map((node) => node.copyWith()).toList()));
   }
 
   textEdit(TextNode node, Delta Function() f) {
@@ -115,12 +115,19 @@ class TransactionBuilder {
   /// Inserts content at a specified index.
   /// Optionally, you may specify formatting attributes that are applied to the inserted string.
   /// By default, the formatting attributes before the insert position will be used.
-  insertText(TextNode node, int index, String content,
-      [Attributes? attributes]) {
+  insertText(
+    TextNode node,
+    int index,
+    String content, {
+    Attributes? attributes,
+  }) {
     var newAttributes = attributes;
     if (index != 0 && attributes == null) {
       newAttributes =
           node.delta.slice(max(index - 1, 0), index).first.attributes;
+      if (newAttributes != null) {
+        newAttributes = Attributes.from(newAttributes);
+      }
     }
     textEdit(
       node,
@@ -132,7 +139,8 @@ class TransactionBuilder {
         ),
     );
     afterSelection = Selection.collapsed(
-        Position(path: node.path, offset: index + content.length));
+      Position(path: node.path, offset: index + content.length),
+    );
   }
 
   /// Assigns formatting attributes to a range of text.
@@ -185,7 +193,7 @@ class TransactionBuilder {
   ///
   /// Also, this method will transform the path of the operations
   /// to avoid conflicts.
-  add(Operation op) {
+  add(Operation op, {bool transform = true}) {
     final Operation? last = operations.isEmpty ? null : operations.last;
     if (last != null) {
       if (op is TextEditOperation &&
@@ -200,8 +208,10 @@ class TransactionBuilder {
         return;
       }
     }
-    for (var i = 0; i < operations.length; i++) {
-      op = transformOperation(operations[i], op);
+    if (transform) {
+      for (var i = 0; i < operations.length; i++) {
+        op = transformOperation(operations[i], op);
+      }
     }
     if (op is TextEditOperation && op.delta.isEmpty) {
       return;

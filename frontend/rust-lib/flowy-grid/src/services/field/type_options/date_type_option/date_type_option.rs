@@ -9,7 +9,7 @@ use chrono::format::strftime::StrftimeItems;
 use chrono::{NaiveDateTime, Timelike};
 use flowy_derive::ProtoBuf;
 use flowy_error::{ErrorCode, FlowyError, FlowyResult};
-use flowy_grid_data_model::revision::{CellRevision, FieldRevision, TypeOptionDataDeserializer, TypeOptionDataEntry};
+use flowy_grid_data_model::revision::{CellRevision, FieldRevision, TypeOptionDataDeserializer, TypeOptionDataFormat};
 use serde::{Deserialize, Serialize};
 
 // Date
@@ -51,8 +51,8 @@ impl DateTypeOptionPB {
         let date = format!("{}", utc.format_with_items(StrftimeItems::new(fmt)));
 
         let mut time = "".to_string();
-        if has_time {
-            let fmt = format!("{} {}", self.date_format.format_str(), self.time_format.format_str());
+        if has_time && self.include_time {
+            let fmt = format!("{}{}", self.date_format.format_str(), self.time_format.format_str());
             time = format!("{}", utc.format_with_items(StrftimeItems::new(&fmt))).replace(&date, "");
         }
 
@@ -127,6 +127,17 @@ impl CellDisplayable<DateTimestamp> for DateTypeOptionPB {
         let date_cell_data = self.today_desc_from_timestamp(timestamp);
         CellBytes::from(date_cell_data)
     }
+
+    fn display_string(
+        &self,
+        cell_data: CellData<DateTimestamp>,
+        _decoded_field_type: &FieldType,
+        _field_rev: &FieldRevision,
+    ) -> FlowyResult<String> {
+        let timestamp = cell_data.try_into_inner()?;
+        let date_cell_data = self.today_desc_from_timestamp(timestamp);
+        Ok(date_cell_data.date)
+    }
 }
 
 impl CellDataOperation<DateTimestamp, DateCellChangesetPB> for DateTypeOptionPB {
@@ -189,7 +200,7 @@ impl TypeOptionBuilder for DateTypeOptionBuilder {
         FieldType::DateTime
     }
 
-    fn entry(&self) -> &dyn TypeOptionDataEntry {
+    fn data_format(&self) -> &dyn TypeOptionDataFormat {
         &self.0
     }
 }

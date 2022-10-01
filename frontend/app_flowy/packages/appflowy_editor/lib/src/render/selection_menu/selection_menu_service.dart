@@ -1,9 +1,12 @@
 import 'package:appflowy_editor/src/editor_state.dart';
 import 'package:appflowy_editor/src/infra/flowy_svg.dart';
-import 'package:appflowy_editor/src/render/rich_text/rich_text_style.dart';
+import 'package:appflowy_editor/src/l10n/l10n.dart';
+import 'package:appflowy_editor/src/render/image/image_upload_widget.dart';
 import 'package:appflowy_editor/src/render/selection_menu/selection_menu_widget.dart';
 import 'package:appflowy_editor/src/service/default_text_operations/format_rich_text_style.dart';
+
 import 'package:flutter/material.dart';
+import 'package:appflowy_editor/src/document/built_in_attribute_keys.dart';
 
 abstract class SelectionMenuService {
   Offset get topLeft;
@@ -23,6 +26,7 @@ class SelectionMenu implements SelectionMenuService {
 
   OverlayEntry? _selectionMenuEntry;
   bool _selectionUpdateByInner = false;
+  Offset? _topLeft;
 
   @override
   void dismiss() {
@@ -52,7 +56,14 @@ class SelectionMenu implements SelectionMenuService {
     if (selectionRects.isEmpty) {
       return;
     }
-    final offset = selectionRects.first.bottomRight + const Offset(10, 10);
+    // Workaround: We can customize the padding through the [EditorStyle],
+    //  but the coordinates of overlay are not properly converted currently.
+    //  Just subtract the padding here as a result.
+    final baseOffset =
+        editorState.renderBox?.localToGlobal(Offset.zero) ?? Offset.zero;
+    final offset =
+        selectionRects.first.bottomRight + const Offset(10, 10) - baseOffset;
+    _topLeft = offset;
 
     _selectionMenuEntry = OverlayEntry(builder: (context) {
       return Positioned(
@@ -84,8 +95,9 @@ class SelectionMenu implements SelectionMenuService {
   }
 
   @override
-  // TODO: implement topLeft
-  Offset get topLeft => throw UnimplementedError();
+  Offset get topLeft {
+    return _topLeft ?? Offset.zero;
+  }
 
   void _onSelectionChange() {
     // workaround: SelectionService has been released after hot reload.
@@ -112,51 +124,65 @@ List<SelectionMenuItem> get defaultSelectionMenuItems =>
     _defaultSelectionMenuItems;
 final List<SelectionMenuItem> _defaultSelectionMenuItems = [
   SelectionMenuItem(
-    name: 'Text',
+    name: AppFlowyEditorLocalizations.current.text,
     icon: _selectionMenuIcon('text'),
     keywords: ['text'],
-    handler: (editorState, menuService) {
+    handler: (editorState, _, __) {
       insertTextNodeAfterSelection(editorState, {});
     },
   ),
   SelectionMenuItem(
-    name: 'Heading 1',
+    name: AppFlowyEditorLocalizations.current.heading1,
     icon: _selectionMenuIcon('h1'),
     keywords: ['heading 1, h1'],
-    handler: (editorState, menuService) {
-      insertHeadingAfterSelection(editorState, StyleKey.h1);
+    handler: (editorState, _, __) {
+      insertHeadingAfterSelection(editorState, BuiltInAttributeKey.h1);
     },
   ),
   SelectionMenuItem(
-    name: 'Heading 2',
+    name: AppFlowyEditorLocalizations.current.heading2,
     icon: _selectionMenuIcon('h2'),
     keywords: ['heading 2, h2'],
-    handler: (editorState, menuService) {
-      insertHeadingAfterSelection(editorState, StyleKey.h2);
+    handler: (editorState, _, __) {
+      insertHeadingAfterSelection(editorState, BuiltInAttributeKey.h2);
     },
   ),
   SelectionMenuItem(
-    name: 'Heading 3',
+    name: AppFlowyEditorLocalizations.current.heading3,
     icon: _selectionMenuIcon('h3'),
     keywords: ['heading 3, h3'],
-    handler: (editorState, menuService) {
-      insertHeadingAfterSelection(editorState, StyleKey.h3);
+    handler: (editorState, _, __) {
+      insertHeadingAfterSelection(editorState, BuiltInAttributeKey.h3);
     },
   ),
   SelectionMenuItem(
-    name: 'Bulleted list',
+    name: AppFlowyEditorLocalizations.current.image,
+    icon: _selectionMenuIcon('image'),
+    keywords: ['image'],
+    handler: showImageUploadMenu,
+  ),
+  SelectionMenuItem(
+    name: AppFlowyEditorLocalizations.current.bulletedList,
     icon: _selectionMenuIcon('bulleted_list'),
     keywords: ['bulleted list', 'list', 'unordered list'],
-    handler: (editorState, menuService) {
+    handler: (editorState, _, __) {
       insertBulletedListAfterSelection(editorState);
     },
   ),
   SelectionMenuItem(
-    name: 'Checkbox',
+    name: AppFlowyEditorLocalizations.current.checkbox,
     icon: _selectionMenuIcon('checkbox'),
     keywords: ['todo list', 'list', 'checkbox list'],
-    handler: (editorState, menuService) {
+    handler: (editorState, _, __) {
       insertCheckboxAfterSelection(editorState);
+    },
+  ),
+  SelectionMenuItem(
+    name: AppFlowyEditorLocalizations.current.quote,
+    icon: _selectionMenuIcon('quote'),
+    keywords: ['quote', 'refer'],
+    handler: (editorState, _, __) {
+      insertQuoteAfterSelection(editorState);
     },
   ),
 ];

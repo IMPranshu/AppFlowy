@@ -5,7 +5,7 @@ use crate::services::field::{BoxTypeOptionBuilder, CheckboxCellData, TypeOptionB
 use bytes::Bytes;
 use flowy_derive::ProtoBuf;
 use flowy_error::{FlowyError, FlowyResult};
-use flowy_grid_data_model::revision::{CellRevision, FieldRevision, TypeOptionDataDeserializer, TypeOptionDataEntry};
+use flowy_grid_data_model::revision::{CellRevision, FieldRevision, TypeOptionDataDeserializer, TypeOptionDataFormat};
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 
@@ -26,7 +26,7 @@ impl TypeOptionBuilder for CheckboxTypeOptionBuilder {
         FieldType::Checkbox
     }
 
-    fn entry(&self) -> &dyn TypeOptionDataEntry {
+    fn data_format(&self) -> &dyn TypeOptionDataFormat {
         &self.0
     }
 }
@@ -47,6 +47,16 @@ impl CellDisplayable<CheckboxCellData> for CheckboxTypeOptionPB {
     ) -> FlowyResult<CellBytes> {
         let cell_data = cell_data.try_into_inner()?;
         Ok(CellBytes::new(cell_data))
+    }
+
+    fn display_string(
+        &self,
+        cell_data: CellData<CheckboxCellData>,
+        _decoded_field_type: &FieldType,
+        _field_rev: &FieldRevision,
+    ) -> FlowyResult<String> {
+        let cell_data = cell_data.try_into_inner()?;
+        Ok(cell_data.to_string())
     }
 }
 

@@ -1,50 +1,54 @@
+import 'package:appflowy_board/src/utils/log.dart';
+
 import 'phantom_controller.dart';
 import 'package:flutter/material.dart';
 
-class ColumnPhantomStateController {
-  final _states = <String, ColumnState>{};
+class GroupPhantomState {
+  final _groupStates = <String, GroupState>{};
+  final _groupIsDragging = <String, bool>{};
 
-  void setColumnIsDragging(String columnId, bool isDragging) {
-    _stateWithId(columnId).isDragging = isDragging;
+  void setGroupIsDragging(String groupId, bool isDragging) {
+    _groupIsDragging[groupId] = isDragging;
   }
 
-  bool isDragging(String columnId) {
-    return _stateWithId(columnId).isDragging;
+  bool isDragging(String groupId) {
+    return _groupIsDragging[groupId] ?? false;
   }
 
-  void addColumnListener(String columnId, PassthroughPhantomListener listener) {
-    _stateWithId(columnId).notifier.addListener(
-          onInserted: (index) => listener.onInserted?.call(index),
-          onDeleted: () => listener.onDragEnded?.call(),
-        );
-  }
-
-  void removeColumnListener(String columnId) {
-    _stateWithId(columnId).notifier.dispose();
-    _states.remove(columnId);
-  }
-
-  void notifyDidInsertPhantom(String columnId, int index) {
-    _stateWithId(columnId).notifier.insert(index);
-  }
-
-  void notifyDidRemovePhantom(String columnId) {
-    _stateWithId(columnId).notifier.remove();
-  }
-
-  ColumnState _stateWithId(String columnId) {
-    var state = _states[columnId];
-    if (state == null) {
-      state = ColumnState();
-      _states[columnId] = state;
+  void addGroupListener(String groupId, PassthroughPhantomListener listener) {
+    if (_groupStates[groupId] == null) {
+      Log.debug("[$GroupPhantomState] add group listener: $groupId");
+      _groupStates[groupId] = GroupState();
+      _groupStates[groupId]?.notifier.addListener(
+            onInserted: (index) => listener.onInserted?.call(index),
+            onDeleted: () => listener.onDragEnded?.call(),
+          );
     }
-    return state;
+  }
+
+  void removeGroupListener(String groupId) {
+    Log.debug("[$GroupPhantomState] remove group listener: $groupId");
+    final groupState = _groupStates.remove(groupId);
+    groupState?.dispose();
+  }
+
+  void notifyDidInsertPhantom(String groupId, int index) {
+    _groupStates[groupId]?.notifier.insert(index);
+  }
+
+  void notifyDidRemovePhantom(String groupId) {
+    Log.debug("[$GroupPhantomState] $groupId remove phantom");
+    _groupStates[groupId]?.notifier.remove();
   }
 }
 
-class ColumnState {
+class GroupState {
   bool isDragging = false;
   final notifier = PassthroughPhantomNotifier();
+
+  void dispose() {
+    notifier.dispose();
+  }
 }
 
 abstract class PassthroughPhantomListener {

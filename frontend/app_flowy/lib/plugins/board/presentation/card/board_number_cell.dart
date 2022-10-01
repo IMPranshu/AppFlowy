@@ -3,13 +3,14 @@ import 'package:app_flowy/plugins/grid/application/cell/cell_service/cell_servic
 import 'package:flowy_infra_ui/style_widget/text.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-
 import 'define.dart';
 
 class BoardNumberCell extends StatefulWidget {
+  final String groupId;
   final GridCellControllerBuilder cellControllerBuilder;
 
   const BoardNumberCell({
+    required this.groupId,
     required this.cellControllerBuilder,
     Key? key,
   }) : super(key: key);
@@ -36,15 +37,17 @@ class _BoardNumberCellState extends State<BoardNumberCell> {
     return BlocProvider.value(
       value: _cellBloc,
       child: BlocBuilder<BoardNumberCellBloc, BoardNumberCellState>(
+        buildWhen: (previous, current) => previous.content != current.content,
         builder: (context, state) {
           if (state.content.isEmpty) {
             return const SizedBox();
           } else {
-            return Padding(
-              padding:
-                  EdgeInsets.symmetric(vertical: BoardSizes.cardCellVPading),
-              child: Align(
-                alignment: Alignment.centerLeft,
+            return Align(
+              alignment: Alignment.centerLeft,
+              child: Padding(
+                padding: EdgeInsets.symmetric(
+                  vertical: BoardSizes.cardCellVPadding,
+                ),
                 child: FlowyText.medium(
                   state.content,
                   fontSize: 14,

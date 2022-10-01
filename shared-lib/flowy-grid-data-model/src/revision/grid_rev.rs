@@ -34,11 +34,15 @@ impl GridRevision {
         }
     }
 
-    pub fn from_build_context(grid_id: &str, context: BuildGridContext) -> Self {
+    pub fn from_build_context(
+        grid_id: &str,
+        field_revs: Vec<Arc<FieldRevision>>,
+        block_metas: Vec<GridBlockMetaRevision>,
+    ) -> Self {
         Self {
             grid_id: grid_id.to_owned(),
-            fields: context.field_revs,
-            blocks: context.block_metas.into_iter().map(Arc::new).collect(),
+            fields: field_revs,
+            blocks: block_metas.into_iter().map(Arc::new).collect(),
         }
     }
 }
@@ -143,15 +147,15 @@ impl FieldRevision {
         }
     }
 
-    pub fn insert_type_option_entry<T>(&mut self, entry: &T)
+    pub fn insert_type_option<T>(&mut self, type_option: &T)
     where
-        T: TypeOptionDataEntry + ?Sized,
+        T: TypeOptionDataFormat + ?Sized,
     {
         let id = self.ty.to_string();
-        self.type_options.insert(id, entry.json_str());
+        self.type_options.insert(id, type_option.json_str());
     }
 
-    pub fn get_type_option_entry<T: TypeOptionDataDeserializer>(&self, field_type_rev: FieldTypeRevision) -> Option<T> {
+    pub fn get_type_option<T: TypeOptionDataDeserializer>(&self, field_type_rev: FieldTypeRevision) -> Option<T> {
         let id = field_type_rev.to_string();
         // TODO: cache the deserialized type option
         self.type_options.get(&id).map(|s| T::from_json_str(s))
@@ -171,7 +175,7 @@ impl FieldRevision {
 
 /// The macro [impl_type_option] will implement the [TypeOptionDataEntry] for the type that
 /// supports the serde trait and the TryInto<Bytes> trait.
-pub trait TypeOptionDataEntry {
+pub trait TypeOptionDataFormat {
     fn json_str(&self) -> String;
     fn protobuf_bytes(&self) -> Bytes;
 }
@@ -188,6 +192,9 @@ pub struct BuildGridContext {
     pub field_revs: Vec<Arc<FieldRevision>>,
     pub block_metas: Vec<GridBlockMetaRevision>,
     pub blocks: Vec<GridBlockRevision>,
+
+    // String in JSON format. It can be deserialized into [GridViewRevision]
+    pub grid_view_revision_data: String,
 }
 
 impl BuildGridContext {

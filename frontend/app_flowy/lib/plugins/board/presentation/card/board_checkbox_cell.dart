@@ -5,12 +5,12 @@ import 'package:flowy_infra_ui/style_widget/icon_button.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
-import 'define.dart';
-
 class BoardCheckboxCell extends StatefulWidget {
+  final String groupId;
   final GridCellControllerBuilder cellControllerBuilder;
 
   const BoardCheckboxCell({
+    required this.groupId,
     required this.cellControllerBuilder,
     Key? key,
   }) : super(key: key);
@@ -36,21 +36,21 @@ class _BoardCheckboxCellState extends State<BoardCheckboxCell> {
     return BlocProvider.value(
       value: _cellBloc,
       child: BlocBuilder<BoardCheckboxCellBloc, BoardCheckboxCellState>(
+        buildWhen: (previous, current) =>
+            previous.isSelected != current.isSelected,
         builder: (context, state) {
           final icon = state.isSelected
               ? svgWidget('editor/editor_check')
               : svgWidget('editor/editor_uncheck');
-          return Padding(
-            padding: EdgeInsets.symmetric(
-              vertical: BoardSizes.cardCellVPading,
-            ),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: FlowyIconButton(
-                iconPadding: EdgeInsets.zero,
-                icon: icon,
-                width: 20,
-              ),
+          return Align(
+            alignment: Alignment.centerLeft,
+            child: FlowyIconButton(
+              iconPadding: EdgeInsets.zero,
+              icon: icon,
+              width: 20,
+              onPressed: () => context
+                  .read<BoardCheckboxCellBloc>()
+                  .add(const BoardCheckboxCellEvent.select()),
             ),
           );
         },

@@ -6,20 +6,25 @@ import 'package:flutter/material.dart';
 class FlowyButton extends StatelessWidget {
   final Widget text;
   final VoidCallback? onTap;
+  final void Function(bool)? onHover;
   final EdgeInsets margin;
   final Widget? leftIcon;
   final Widget? rightIcon;
   final Color hoverColor;
   final bool isSelected;
+  final BorderRadius radius;
+
   const FlowyButton({
     Key? key,
     required this.text,
     this.onTap,
+    this.onHover,
     this.margin = const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
     this.leftIcon,
     this.rightIcon,
     this.hoverColor = Colors.transparent,
     this.isSelected = false,
+    this.radius = const BorderRadius.all(Radius.circular(6)),
   }) : super(key: key);
 
   @override
@@ -27,7 +32,11 @@ class FlowyButton extends StatelessWidget {
     return InkWell(
       onTap: onTap,
       child: FlowyHover(
-        style: HoverStyle(borderRadius: BorderRadius.zero, hoverColor: hoverColor),
+        style: HoverStyle(
+          borderRadius: radius,
+          hoverColor: hoverColor,
+        ),
+        onHover: onHover,
         setSelected: () => isSelected,
         builder: (context, onHover) => _render(),
       ),
@@ -38,14 +47,16 @@ class FlowyButton extends StatelessWidget {
     List<Widget> children = List.empty(growable: true);
 
     if (leftIcon != null) {
-      children.add(SizedBox.fromSize(size: const Size.square(16), child: leftIcon!));
+      children.add(
+          SizedBox.fromSize(size: const Size.square(16), child: leftIcon!));
       children.add(const HSpace(6));
     }
 
     children.add(Expanded(child: text));
 
     if (rightIcon != null) {
-      children.add(SizedBox.fromSize(size: const Size.square(16), child: rightIcon!));
+      children.add(
+          SizedBox.fromSize(size: const Size.square(16), child: rightIcon!));
     }
 
     return Padding(
@@ -121,7 +132,8 @@ class FlowyTextButton extends StatelessWidget {
       visualDensity: VisualDensity.compact,
       hoverElevation: 0,
       highlightElevation: 0,
-      shape: RoundedRectangleBorder(borderRadius: radius ?? BorderRadius.circular(2)),
+      shape: RoundedRectangleBorder(
+          borderRadius: radius ?? BorderRadius.circular(2)),
       fillColor: fillColor,
       hoverColor: hoverColor ?? Colors.transparent,
       focusColor: Colors.transparent,

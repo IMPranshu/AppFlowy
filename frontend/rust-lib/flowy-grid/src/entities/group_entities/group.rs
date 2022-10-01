@@ -14,6 +14,9 @@ pub struct CreateBoardCardPayloadPB {
 
     #[pb(index = 2)]
     pub group_id: String,
+
+    #[pb(index = 3, one_of)]
+    pub start_row_id: Option<String>,
 }
 
 impl TryInto<CreateRowParams> for CreateBoardCardPayloadPB {
@@ -22,9 +25,13 @@ impl TryInto<CreateRowParams> for CreateBoardCardPayloadPB {
     fn try_into(self) -> Result<CreateRowParams, Self::Error> {
         let grid_id = NotEmptyStr::parse(self.grid_id).map_err(|_| ErrorCode::GridIdIsEmpty)?;
         let group_id = NotEmptyStr::parse(self.group_id).map_err(|_| ErrorCode::GroupIdIsEmpty)?;
+        let start_row_id = match self.start_row_id {
+            None => None,
+            Some(start_row_id) => Some(NotEmptyStr::parse(start_row_id).map_err(|_| ErrorCode::RowIdIsEmpty)?.0),
+        };
         Ok(CreateRowParams {
             grid_id: grid_id.0,
-            start_row_id: None,
+            start_row_id,
             group_id: Some(group_id.0),
             layout: GridLayout::Board,
         })
@@ -37,14 +44,14 @@ pub struct GridGroupConfigurationPB {
     pub id: String,
 
     #[pb(index = 2)]
-    pub group_field_id: String,
+    pub field_id: String,
 }
 
 impl std::convert::From<&GroupConfigurationRevision> for GridGroupConfigurationPB {
     fn from(rev: &GroupConfigurationRevision) -> Self {
         GridGroupConfigurationPB {
             id: rev.id.clone(),
-            group_field_id: rev.field_id.clone(),
+            field_id: rev.field_id.clone(),
         }
     }
 }
@@ -81,6 +88,12 @@ pub struct GroupPB {
 
     #[pb(index = 4)]
     pub rows: Vec<RowPB>,
+
+    #[pb(index = 5)]
+    pub is_default: bool,
+
+    #[pb(index = 6)]
+    pub is_visible: bool,
 }
 
 impl std::convert::From<Group> for GroupPB {
@@ -90,6 +103,8 @@ impl std::convert::From<Group> for GroupPB {
             group_id: group.id,
             desc: group.name,
             rows: group.rows,
+            is_default: group.is_default,
+            is_visible: group.is_visible,
         }
     }
 }
@@ -115,7 +130,7 @@ impl std::convert::From<Vec<Arc<GroupConfigurationRevision>>> for RepeatedGridGr
 }
 
 #[derive(Eq, PartialEq, ProtoBuf, Debug, Default, Clone)]
-pub struct CreateGridGroupPayloadPB {
+pub struct InsertGroupPayloadPB {
     #[pb(index = 1)]
     pub field_id: String,
 
@@ -123,22 +138,22 @@ pub struct CreateGridGroupPayloadPB {
     pub field_type: FieldType,
 }
 
-impl TryInto<CreatGroupParams> for CreateGridGroupPayloadPB {
+impl TryInto<InsertGroupParams> for InsertGroupPayloadPB {
     type Error = ErrorCode;
 
-    fn try_into(self) -> Result<CreatGroupParams, Self::Error> {
+    fn try_into(self) -> Result<InsertGroupParams, Self::Error> {
         let field_id = NotEmptyStr::parse(self.field_id)
             .map_err(|_| ErrorCode::FieldIdIsEmpty)?
             .0;
 
-        Ok(CreatGroupParams {
+        Ok(InsertGroupParams {
             field_id,
             field_type_rev: self.field_type.into(),
         })
     }
 }
 
-pub struct CreatGroupParams {
+pub struct InsertGroupParams {
     pub field_id: String,
     pub field_type_rev: FieldTypeRevision,
 }

@@ -1,5 +1,5 @@
 use crate::web_socket::EditorCommandReceiver;
-use crate::TextBlockUser;
+use crate::TextEditorUser;
 use async_stream::stream;
 use bytes::Bytes;
 use flowy_error::{FlowyError, FlowyResult};
@@ -11,9 +11,10 @@ use flowy_sync::{
     errors::CollaborateError,
 };
 use futures::stream::StreamExt;
+use lib_ot::core::{AttributeEntry, Attributes};
 use lib_ot::{
     core::{Interval, OperationTransform},
-    rich_text::{RichTextAttribute, RichTextAttributes, RichTextDelta},
+    text_delta::TextDelta,
 };
 use std::sync::Arc;
 use tokio::sync::{oneshot, RwLock};
@@ -22,16 +23,16 @@ use tokio::sync::{oneshot, RwLock};
 // serial.
 pub(crate) struct EditBlockQueue {
     document: Arc<RwLock<ClientDocument>>,
-    user: Arc<dyn TextBlockUser>,
+    user: Arc<dyn TextEditorUser>,
     rev_manager: Arc<RevisionManager>,
     receiver: Option<EditorCommandReceiver>,
 }
 
 impl EditBlockQueue {
     pub(crate) fn new(
-        user: Arc<dyn TextBlockUser>,
+        user: Arc<dyn TextEditorUser>,
         rev_manager: Arc<RevisionManager>,
-        delta: RichTextDelta,
+        delta: TextDelta,
         receiver: EditorCommandReceiver,
     ) -> Self {
         let document = Arc::new(RwLock::new(ClientDocument::from_delta(delta)));
@@ -91,8 +92,8 @@ impl EditBlockQueue {
             EditorCommand::TransformDelta { delta, ret } => {
                 let f = || async {
                     let read_guard = self.document.read().await;
-                    let mut server_prime: Option<RichTextDelta> = None;
-                    let client_prime: RichTextDelta;
+                    let mut server_prime: Option<TextDelta> = None;
+                    let client_prime: TextDelta;
 
                     if read_guard.is_empty() {
                         // Do nothing
@@ -174,7 +175,7 @@ impl EditBlockQueue {
         Ok(())
     }
 
-    async fn save_local_delta(&self, delta: RichTextDelta, md5: String) -> Result<RevId, FlowyError> {
+    async fn save_local_delta(&self, delta: TextDelta, md5: String) -> Result<RevId, FlowyError> {
         let delta_data = delta.json_bytes();
         let (base_rev_id, rev_id) = self.rev_manager.next_rev_id_pair();
         let user_id = self.user.user_id()?;
@@ -194,7 +195,7 @@ impl EditBlockQueue {
 pub(crate) struct TextBlockRevisionCompactor();
 impl RevisionCompactor for TextBlockRevisionCompactor {
     fn bytes_from_revisions(&self, revisions: Vec<Revision>) -> FlowyResult<Bytes> {
-        let delta = make_delta_from_revisions::<RichTextAttributes>(revisions)?;
+        let delta = make_delta_from_revisions::<Attributes>(revisions)?;
         Ok(delta.json_bytes())
     }
 }
@@ -203,19 +204,19 @@ pub(crate) type Ret<T> = oneshot::Sender<Result<T, CollaborateError>>;
 
 pub(crate) enum EditorCommand {
     ComposeLocalDelta {
-        delta: RichTextDelta,
+        delta: TextDelta,
         ret: Ret<()>,
     },
     ComposeRemoteDelta {
-        client_delta: RichTextDelta,
+        client_delta: TextDelta,
         ret: Ret<DeltaMD5>,
     },
     ResetDelta {
-        delta: RichTextDelta,
+        delta: TextDelta,
         ret: Ret<DeltaMD5>,
     },
     TransformDelta {
-        delta: RichTextDelta,
+        delta: TextDelta,
         ret: Ret<RichTextTransformDeltas>,
     },
     Insert {
@@ -229,7 +230,7 @@ pub(crate) enum EditorCommand {
     },
     Format {
         interval: Interval,
-        attribute: RichTextAttribute,
+        attribute: AttributeEntry,
         ret: Ret<()>,
     },
     Replace {
@@ -254,7 +255,7 @@ pub(crate) enum EditorCommand {
     },
     #[allow(dead_code)]
     ReadDelta {
-        ret: Ret<RichTextDelta>,
+        ret: Ret<TextDelta>,
     },
 }
 

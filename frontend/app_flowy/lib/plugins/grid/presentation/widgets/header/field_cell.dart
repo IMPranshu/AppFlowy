@@ -1,8 +1,9 @@
 import 'package:app_flowy/plugins/grid/application/field/field_cell_bloc.dart';
 import 'package:app_flowy/plugins/grid/application/field/field_service.dart';
-import 'package:app_flowy/plugins/grid/application/field/type_option/type_option_context.dart';
+import 'package:appflowy_popover/appflowy_popover.dart';
 import 'package:flowy_infra/image.dart';
 import 'package:flowy_infra/theme.dart';
+import 'package:flowy_infra_ui/flowy_infra_ui.dart';
 import 'package:flowy_infra_ui/style_widget/button.dart';
 import 'package:flowy_infra_ui/style_widget/hover.dart';
 import 'package:flowy_infra_ui/style_widget/text.dart';
@@ -13,23 +14,49 @@ import '../../layout/sizes.dart';
 import 'field_type_extension.dart';
 
 import 'field_cell_action_sheet.dart';
-import 'field_editor.dart';
 
-class GridFieldCell extends StatelessWidget {
+class GridFieldCell extends StatefulWidget {
   final GridFieldCellContext cellContext;
-  const GridFieldCell(this.cellContext, {Key? key}) : super(key: key);
+  const GridFieldCell({
+    Key? key,
+    required this.cellContext,
+  }) : super(key: key);
+
+  @override
+  State<GridFieldCell> createState() => _GridFieldCellState();
+}
+
+class _GridFieldCellState extends State<GridFieldCell> {
+  late PopoverController popoverController;
+
+  @override
+  void initState() {
+    popoverController = PopoverController();
+    super.initState();
+  }
 
   @override
   Widget build(BuildContext context) {
     return BlocProvider(
-      create: (context) => FieldCellBloc(cellContext: cellContext)
-        ..add(const FieldCellEvent.initial()),
+      create: (context) {
+        return FieldCellBloc(cellContext: widget.cellContext);
+      },
       child: BlocBuilder<FieldCellBloc, FieldCellState>(
-        // buildWhen: (p, c) => p.field != c.field,
         builder: (context, state) {
-          final button = FieldCellButton(
-            field: state.field,
-            onTap: () => _showActionSheet(context),
+          final button = AppFlowyPopover(
+            triggerActions: PopoverTriggerFlags.none,
+            constraints: BoxConstraints.loose(const Size(240, 840)),
+            direction: PopoverDirection.bottomWithLeftAligned,
+            controller: popoverController,
+            popupBuilder: (BuildContext context) {
+              return GridFieldCellActionSheet(
+                cellContext: widget.cellContext,
+              );
+            },
+            child: FieldCellButton(
+              field: widget.cellContext.field,
+              onTap: () => popoverController.show(),
+            ),
           );
 
           const line = Positioned(
@@ -50,29 +77,6 @@ class GridFieldCell extends StatelessWidget {
         },
       ),
     );
-  }
-
-  void _showActionSheet(BuildContext context) {
-    final state = context.read<FieldCellBloc>().state;
-    GridFieldCellActionSheet(
-      cellContext:
-          GridFieldCellContext(gridId: state.gridId, field: state.field),
-      onEdited: () => _showFieldEditor(context),
-    ).show(context);
-  }
-
-  void _showFieldEditor(BuildContext context) {
-    final state = context.read<FieldCellBloc>().state;
-    final field = state.field;
-
-    FieldEditor(
-      gridId: state.gridId,
-      fieldName: field.name,
-      typeOptionLoader: FieldTypeOptionLoader(
-        gridId: state.gridId,
-        field: field,
-      ),
-    ).show(context);
   }
 }
 
@@ -119,6 +123,7 @@ class _DragToExpandLine extends StatelessWidget {
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onHorizontalDragUpdate: (value) {
+          debugPrint("update new width: ${value.delta.dx}");
           context
               .read<FieldCellBloc>()
               .add(FieldCellEvent.startUpdateWidth(value.delta.dx));
@@ -145,9 +150,11 @@ class _DragToExpandLine extends StatelessWidget {
 class FieldCellButton extends StatelessWidget {
   final VoidCallback onTap;
   final FieldPB field;
+  final int? maxLines;
   const FieldCellButton({
     required this.field,
     required this.onTap,
+    this.maxLines = 1,
     Key? key,
   }) : super(key: key);
 
@@ -155,10 +162,15 @@ class FieldCellButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = context.watch<AppTheme>();
     return FlowyButton(
+      radius: BorderRadius.zero,
       hoverColor: theme.shader6,
       onTap: onTap,
       leftIcon: svgWidget(field.fieldType.iconName(), color: theme.iconColor),
-      text: FlowyText.medium(field.name, fontSize: 12),
+      text: FlowyText.medium(
+        field.name,
+        fontSize: 12,
+        maxLines: maxLines,
+      ),
       margin: GridSize.cellContentInsets,
     );
   }

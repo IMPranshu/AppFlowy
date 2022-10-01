@@ -5,20 +5,25 @@ pub struct Group {
     pub id: String,
     pub field_id: String,
     pub name: String,
+    pub is_default: bool,
+    pub is_visible: bool,
     pub(crate) rows: Vec<RowPB>,
 
-    /// [content] is used to determine which group the cell belongs to.
-    pub content: String,
+    /// [filter_content] is used to determine which group the cell belongs to.
+    pub filter_content: String,
 }
 
 impl Group {
-    pub fn new(id: String, field_id: String, name: String, content: String) -> Self {
+    pub fn new(id: String, field_id: String, name: String, filter_content: String) -> Self {
+        let is_default = id == field_id;
         Self {
             id,
             field_id,
+            is_default,
+            is_visible: true,
             name,
             rows: vec![],
-            content,
+            filter_content,
         }
     }
 
@@ -58,5 +63,9 @@ impl Group {
 
     pub fn number_of_row(&self) -> usize {
         self.rows.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.rows.is_empty()
     }
 }

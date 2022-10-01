@@ -17,42 +17,39 @@ class InitAppWidgetTask extends LaunchTask {
   @override
   Future<void> initialize(LaunchContext context) async {
     final widget = context.getIt<EntryPoint>().create();
-    final setting = await UserSettingsService().getAppearanceSettings();
-    final settingModel = AppearanceSettingModel(setting);
+    final setting = await SettingsFFIService().getAppearanceSetting();
+    final settingModel = AppearanceSetting(setting);
     final app = ApplicationWidget(
-      child: widget,
       settingModel: settingModel,
+      child: widget,
     );
-    BlocOverrides.runZoned(
-      () {
-        runApp(
-          EasyLocalization(
-            supportedLocales: const [
-              // In alphabetical order
-              Locale('ca', 'ES'),
-              Locale('de', 'DE'),
-              Locale('en'),
-              Locale('es', 'VE'),
-              Locale('fr', 'FR'),
-              Locale('fr', 'CA'),
-              Locale('hu', 'HU'),
-              Locale('id', 'ID'),
-              Locale('it', 'IT'),
-              Locale('ja', 'JP'),
-              Locale('pl', 'PL'),
-              Locale('pt', 'BR'),
-              Locale('ru', 'RU'),
-              Locale('tr', 'TR'),
-              Locale('zh', 'CN'),
-            ],
-            path: 'assets/translations',
-            fallbackLocale: const Locale('en'),
-            saveLocale: false,
-            child: app,
-          ),
-        );
-      },
-      blocObserver: ApplicationBlocObserver(),
+    Bloc.observer = ApplicationBlocObserver();
+    runApp(
+      EasyLocalization(
+        supportedLocales: const [
+          // In alphabetical order
+          Locale('ca', 'ES'),
+          Locale('de', 'DE'),
+          Locale('en'),
+          Locale('es', 'VE'),
+          Locale('fr', 'FR'),
+          Locale('fr', 'CA'),
+          Locale('hu', 'HU'),
+          Locale('id', 'ID'),
+          Locale('it', 'IT'),
+          Locale('ja', 'JP'),
+          Locale('pl', 'PL'),
+          Locale('pt', 'BR'),
+          Locale('ru', 'RU'),
+          Locale('tr', 'TR'),
+          Locale('zh', 'CN'),
+        ],
+        path: 'assets/translations',
+        fallbackLocale: const Locale('en'),
+        useFallbackTranslations: true,
+        saveLocale: false,
+        child: app,
+      ),
     );
 
     return Future(() => {});
@@ -61,7 +58,7 @@ class InitAppWidgetTask extends LaunchTask {
 
 class ApplicationWidget extends StatelessWidget {
   final Widget child;
-  final AppearanceSettingModel settingModel;
+  final AppearanceSetting settingModel;
 
   const ApplicationWidget({
     Key? key,
@@ -78,10 +75,10 @@ class ApplicationWidget extends StatelessWidget {
         const minWidth = 600.0;
         setWindowMinSize(const Size(minWidth, minWidth / ratio));
         settingModel.readLocaleWhenAppLaunch(context);
-        AppTheme theme = context.select<AppearanceSettingModel, AppTheme>(
+        AppTheme theme = context.select<AppearanceSetting, AppTheme>(
           (value) => value.theme,
         );
-        Locale locale = context.select<AppearanceSettingModel, Locale>(
+        Locale locale = context.select<AppearanceSetting, Locale>(
           (value) => value.locale,
         );
 

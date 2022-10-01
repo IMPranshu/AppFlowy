@@ -15,13 +15,13 @@ import 'package:textstyle_extensions/textstyle_extensions.dart';
 export 'package:flowy_infra_ui/widget/dialog/styled_dialogs.dart';
 import 'package:app_flowy/generated/locale_keys.g.dart';
 
-class TextFieldDialog extends StatefulWidget {
+class NavigatorTextFieldDialog extends StatefulWidget {
   final String value;
   final String title;
   final void Function()? cancel;
   final void Function(String) confirm;
 
-  const TextFieldDialog({
+  const NavigatorTextFieldDialog({
     required this.title,
     required this.value,
     required this.confirm,
@@ -30,10 +30,10 @@ class TextFieldDialog extends StatefulWidget {
   }) : super(key: key);
 
   @override
-  State<TextFieldDialog> createState() => _CreateTextFieldDialog();
+  State<NavigatorTextFieldDialog> createState() => _CreateTextFieldDialog();
 }
 
-class _CreateTextFieldDialog extends State<TextFieldDialog> {
+class _CreateTextFieldDialog extends State<NavigatorTextFieldDialog> {
   String newValue = "";
 
   @override
@@ -56,7 +56,8 @@ class _CreateTextFieldDialog extends State<TextFieldDialog> {
           FlowyFormTextInput(
             hintText: LocaleKeys.dialogCreatePageNameHint.tr(),
             initialValue: widget.value,
-            textStyle: const TextStyle(fontSize: 24, fontWeight: FontWeight.w400),
+            textStyle:
+                const TextStyle(fontSize: 24, fontWeight: FontWeight.w400),
             autoFocus: true,
             onChanged: (text) {
               newValue = text;
@@ -70,11 +71,13 @@ class _CreateTextFieldDialog extends State<TextFieldDialog> {
           OkCancelButton(
             onOkPressed: () {
               widget.confirm(newValue);
+              Navigator.of(context).pop();
             },
             onCancelPressed: () {
               if (widget.cancel != null) {
                 widget.cancel!();
               }
+              Navigator.of(context).pop();
             },
           )
         ],
@@ -83,12 +86,12 @@ class _CreateTextFieldDialog extends State<TextFieldDialog> {
   }
 }
 
-class FlowyAlertDialog extends StatefulWidget {
+class NavigatorAlertDialog extends StatefulWidget {
   final String title;
   final void Function()? cancel;
   final void Function()? confirm;
 
-  const FlowyAlertDialog({
+  const NavigatorAlertDialog({
     required this.title,
     this.confirm,
     this.cancel,
@@ -96,10 +99,10 @@ class FlowyAlertDialog extends StatefulWidget {
   }) : super(key: key);
 
   @override
-  State<FlowyAlertDialog> createState() => _CreateFlowyAlertDialog();
+  State<NavigatorAlertDialog> createState() => _CreateFlowyAlertDialog();
 }
 
-class _CreateFlowyAlertDialog extends State<FlowyAlertDialog> {
+class _CreateFlowyAlertDialog extends State<NavigatorAlertDialog> {
   @override
   void initState() {
     super.initState();
@@ -118,10 +121,13 @@ class _CreateFlowyAlertDialog extends State<FlowyAlertDialog> {
           ],
           if (widget.confirm != null) ...[
             const VSpace(20),
-            OkCancelButton(
-              onOkPressed: widget.confirm!,
-              onCancelPressed: widget.confirm,
-            )
+            OkCancelButton(onOkPressed: () {
+              widget.confirm?.call();
+              Navigator.of(context).pop();
+            }, onCancelPressed: () {
+              widget.cancel?.call();
+              Navigator.of(context).pop();
+            })
           ]
         ],
       ),
@@ -129,7 +135,7 @@ class _CreateFlowyAlertDialog extends State<FlowyAlertDialog> {
   }
 }
 
-class OkCancelDialog extends StatelessWidget {
+class NavigatorOkCancelDialog extends StatelessWidget {
   final VoidCallback? onOkPressed;
   final VoidCallback? onCancelPressed;
   final String? okTitle;
@@ -138,7 +144,7 @@ class OkCancelDialog extends StatelessWidget {
   final String message;
   final double? maxWidth;
 
-  const OkCancelDialog(
+  const NavigatorOkCancelDialog(
       {Key? key,
       this.onOkPressed,
       this.onCancelPressed,
@@ -158,7 +164,7 @@ class OkCancelDialog extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           if (title != null) ...[
-            Text(title!.toUpperCase(), style: TextStyles.T1.textColor(theme.shader1)),
+            FlowyText.medium(title!.toUpperCase(), color: theme.shader1),
             VSpace(Insets.sm * 1.5),
             Container(color: theme.bg1, height: 1),
             VSpace(Insets.m * 1.5),
@@ -166,8 +172,14 @@ class OkCancelDialog extends StatelessWidget {
           Text(message, style: TextStyles.Body1.textHeight(1.5)),
           SizedBox(height: Insets.l),
           OkCancelButton(
-            onOkPressed: onOkPressed,
-            onCancelPressed: onCancelPressed,
+            onOkPressed: () {
+              onOkPressed?.call();
+              Navigator.of(context).pop();
+            },
+            onCancelPressed: () {
+              onCancelPressed?.call();
+              Navigator.of(context).pop();
+            },
             okTitle: okTitle?.toUpperCase(),
             cancelTitle: cancelTitle?.toUpperCase(),
           )
@@ -185,7 +197,12 @@ class OkCancelButton extends StatelessWidget {
   final double? minHeight;
 
   const OkCancelButton(
-      {Key? key, this.onOkPressed, this.onCancelPressed, this.okTitle, this.cancelTitle, this.minHeight})
+      {Key? key,
+      this.onOkPressed,
+      this.onCancelPressed,
+      this.okTitle,
+      this.cancelTitle,
+      this.minHeight})
       : super(key: key);
 
   @override
@@ -198,20 +215,14 @@ class OkCancelButton extends StatelessWidget {
           if (onCancelPressed != null)
             SecondaryTextButton(
               cancelTitle ?? LocaleKeys.button_Cancel.tr(),
-              onPressed: () {
-                onCancelPressed!();
-                AppGlobals.nav.pop();
-              },
+              onPressed: onCancelPressed,
               bigMode: true,
             ),
           HSpace(Insets.m),
           if (onOkPressed != null)
             PrimaryTextButton(
               okTitle ?? LocaleKeys.button_OK.tr(),
-              onPressed: () {
-                onOkPressed!();
-                AppGlobals.nav.pop();
-              },
+              onPressed: onOkPressed,
               bigMode: true,
             ),
         ],

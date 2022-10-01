@@ -6,7 +6,7 @@ use bytes::Bytes;
 use fancy_regex::Regex;
 use flowy_derive::ProtoBuf;
 use flowy_error::{FlowyError, FlowyResult};
-use flowy_grid_data_model::revision::{CellRevision, FieldRevision, TypeOptionDataDeserializer, TypeOptionDataEntry};
+use flowy_grid_data_model::revision::{CellRevision, FieldRevision, TypeOptionDataDeserializer, TypeOptionDataFormat};
 use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
 
@@ -20,7 +20,7 @@ impl TypeOptionBuilder for URLTypeOptionBuilder {
         FieldType::URL
     }
 
-    fn entry(&self) -> &dyn TypeOptionDataEntry {
+    fn data_format(&self) -> &dyn TypeOptionDataFormat {
         &self.0
     }
 }
@@ -41,6 +41,16 @@ impl CellDisplayable<URLCellDataPB> for URLTypeOptionPB {
     ) -> FlowyResult<CellBytes> {
         let cell_data: URLCellDataPB = cell_data.try_into_inner()?;
         CellBytes::from(cell_data)
+    }
+
+    fn display_string(
+        &self,
+        cell_data: CellData<URLCellDataPB>,
+        _decoded_field_type: &FieldType,
+        _field_rev: &FieldRevision,
+    ) -> FlowyResult<String> {
+        let cell_data: URLCellDataPB = cell_data.try_into_inner()?;
+        Ok(cell_data.content)
     }
 }
 

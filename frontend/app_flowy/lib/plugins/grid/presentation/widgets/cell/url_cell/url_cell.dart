@@ -2,9 +2,11 @@ import 'dart:async';
 import 'package:app_flowy/generated/locale_keys.g.dart';
 import 'package:app_flowy/plugins/grid/application/cell/url_cell_bloc.dart';
 import 'package:app_flowy/workspace/presentation/home/toast.dart';
+import 'package:appflowy_popover/appflowy_popover.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flowy_infra/image.dart';
 import 'package:flowy_infra/theme.dart';
+import 'package:flowy_infra_ui/flowy_infra_ui.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -48,27 +50,35 @@ class GridURLCell extends GridCellWidget {
   @override
   GridCellState<GridURLCell> createState() => _GridURLCellState();
 
-  GridCellAccessory accessoryFromType(
+  GridCellAccessoryBuilder accessoryFromType(
       GridURLCellAccessoryType ty, GridCellAccessoryBuildContext buildContext) {
     switch (ty) {
       case GridURLCellAccessoryType.edit:
-        final cellController =
-            cellControllerBuilder.build() as GridURLCellController;
-        return _EditURLAccessory(
-            cellContext: cellController,
-            anchorContext: buildContext.anchorContext);
+        return GridCellAccessoryBuilder(
+          builder: (Key key) => _EditURLAccessory(
+            key: key,
+            anchorContext: buildContext.anchorContext,
+            cellControllerBuilder: cellControllerBuilder,
+          ),
+        );
 
       case GridURLCellAccessoryType.copyURL:
         final cellContext =
             cellControllerBuilder.build() as GridURLCellController;
-        return _CopyURLAccessory(cellContext: cellContext);
+        return GridCellAccessoryBuilder(
+          builder: (Key key) => _CopyURLAccessory(
+            key: key,
+            cellContext: cellContext,
+          ),
+        );
     }
   }
 
   @override
-  List<GridCellAccessory> Function(GridCellAccessoryBuildContext buildContext)
+  List<GridCellAccessoryBuilder> Function(
+          GridCellAccessoryBuildContext buildContext)
       get accessoryBuilder => (buildContext) {
-            final List<GridCellAccessory> accessories = [];
+            final List<GridCellAccessoryBuilder> accessories = [];
             if (cellStyle != null) {
               accessories.addAll(cellStyle!.accessoryTypes.map((ty) {
                 return accessoryFromType(ty, buildContext);
@@ -86,6 +96,7 @@ class GridURLCell extends GridCellWidget {
 }
 
 class _GridURLCellState extends GridCellState<GridURLCell> {
+  final _popoverController = PopoverController();
   late URLCellBloc _cellBloc;
 
   @override
@@ -116,14 +127,31 @@ class _GridURLCellState extends GridCellState<GridURLCell> {
             ),
           );
 
-          return SizedBox.expand(
+          return AppFlowyPopover(
+            controller: _popoverController,
+            constraints: BoxConstraints.loose(const Size(300, 160)),
+            direction: PopoverDirection.bottomWithLeftAligned,
+            triggerActions: PopoverTriggerFlags.none,
+            offset: const Offset(0, 20),
+            child: SizedBox.expand(
               child: GestureDetector(
-            child: Align(alignment: Alignment.centerLeft, child: richText),
-            onTap: () async {
-              final url = context.read<URLCellBloc>().state.url;
-              await _openUrlOrEdit(url);
+                child: Align(alignment: Alignment.centerLeft, child: richText),
+                onTap: () async {
+                  final url = context.read<URLCellBloc>().state.url;
+                  await _openUrlOrEdit(url);
+                },
+              ),
+            ),
+            popupBuilder: (BuildContext popoverContext) {
+              return URLEditorPopover(
+                cellController: widget.cellControllerBuilder.build()
+                    as GridURLCellController,
+              );
             },
-          ));
+            onClose: () {
+              widget.onCellEditing.value = false;
+            },
+          );
         },
       ),
     );
@@ -139,19 +167,13 @@ class _GridURLCellState extends GridCellState<GridURLCell> {
     final uri = Uri.parse(url);
     if (url.isNotEmpty && await canLaunchUrl(uri)) {
       await launchUrl(uri);
-    } else {
-      final cellContext =
-          widget.cellControllerBuilder.build() as GridURLCellController;
-      widget.onCellEditing.value = true;
-      URLCellEditor.show(context, cellContext, () {
-        widget.onCellEditing.value = false;
-      });
     }
   }
 
   @override
   void requestBeginFocus() {
-    _openUrlOrEdit(_cellBloc.state.url);
+    widget.onCellEditing.value = true;
+    _popoverController.show();
   }
 
   @override
@@ -163,32 +185,64 @@ class _GridURLCellState extends GridCellState<GridURLCell> {
   }
 }
 
-class _EditURLAccessory extends StatelessWidget with GridCellAccessory {
-  final GridURLCellController cellContext;
+class _EditURLAccessory extends StatefulWidget {
+  final GridCellControllerBuilder cellControllerBuilder;
   final BuildContext anchorContext;
   const _EditURLAccessory({
-    required this.cellContext,
+    required this.cellControllerBuilder,
     required this.anchorContext,
     Key? key,
   }) : super(key: key);
 
   @override
+  State<StatefulWidget> createState() => _EditURLAccessoryState();
+}
+
+class _EditURLAccessoryState extends State<_EditURLAccessory>
+    with GridCellAccessoryState {
+  late PopoverController _popoverController;
+
+  @override
+  void initState() {
+    _popoverController = PopoverController();
+    super.initState();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final theme = context.watch<AppTheme>();
-    return svgWidget("editor/edit", color: theme.iconColor);
+    return AppFlowyPopover(
+      constraints: BoxConstraints.loose(const Size(300, 160)),
+      controller: _popoverController,
+      direction: PopoverDirection.bottomWithLeftAligned,
+      offset: const Offset(0, 20),
+      child: svgWidget("editor/edit", color: theme.iconColor),
+      popupBuilder: (BuildContext popoverContext) {
+        return URLEditorPopover(
+          cellController:
+              widget.cellControllerBuilder.build() as GridURLCellController,
+        );
+      },
+    );
   }
 
   @override
   void onTap() {
-    URLCellEditor.show(anchorContext, cellContext, () {});
+    _popoverController.show();
   }
 }
 
-class _CopyURLAccessory extends StatelessWidget with GridCellAccessory {
+class _CopyURLAccessory extends StatefulWidget {
   final GridURLCellController cellContext;
   const _CopyURLAccessory({required this.cellContext, Key? key})
       : super(key: key);
 
+  @override
+  State<StatefulWidget> createState() => _CopyURLAccessoryState();
+}
+
+class _CopyURLAccessoryState extends State<_CopyURLAccessory>
+    with GridCellAccessoryState {
   @override
   Widget build(BuildContext context) {
     final theme = context.watch<AppTheme>();
@@ -198,7 +252,7 @@ class _CopyURLAccessory extends StatelessWidget with GridCellAccessory {
   @override
   void onTap() {
     final content =
-        cellContext.getCellData(loadIfNotExist: false)?.content ?? "";
+        widget.cellContext.getCellData(loadIfNotExist: false)?.content ?? "";
     Clipboard.setData(ClipboardData(text: content));
     showMessageToast(LocaleKeys.grid_row_copyProperty.tr());
   }

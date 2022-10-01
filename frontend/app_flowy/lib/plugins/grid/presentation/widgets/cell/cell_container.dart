@@ -44,8 +44,8 @@ class CellContainer extends StatelessWidget {
 
             if (accessories.isNotEmpty) {
               container = _GridCellEnterRegion(
-                child: container,
                 accessories: accessories,
+                child: container,
               );
             }
           }
@@ -80,7 +80,7 @@ class CellContainer extends StatelessWidget {
 
 class _GridCellEnterRegion extends StatelessWidget {
   final Widget child;
-  final List<GridCellAccessory> accessories;
+  final List<GridCellAccessoryBuilder> accessories;
   const _GridCellEnterRegion(
       {required this.child, required this.accessories, Key? key})
       : super(key: key);

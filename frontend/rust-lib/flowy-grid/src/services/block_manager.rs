@@ -57,6 +57,7 @@ impl GridBlockManager {
         Ok(self.get_block_editor(&block_id).await?)
     }
 
+    #[tracing::instrument(level = "trace", skip(self, start_row_id), err)]
     pub(crate) async fn create_row(&self, row_rev: RowRevision, start_row_id: Option<String>) -> FlowyResult<i32> {
         let block_id = row_rev.block_id.clone();
         let _ = self.persistence.insert(&row_rev.block_id, &row_rev.id)?;
@@ -107,7 +108,7 @@ impl GridBlockManager {
         let editor = self.get_editor_from_row_id(&changeset.row_id).await?;
         let _ = editor.update_row(changeset.clone()).await?;
         match editor.get_row_rev(&changeset.row_id).await? {
-            None => tracing::error!("Internal error: can't find the row with id: {}", changeset.row_id),
+            None => tracing::error!("Update row failed, can't find the row with id: {}", changeset.row_id),
             Some(row_rev) => {
                 let row_pb = make_row_from_row_rev(row_rev.clone());
                 let block_order_changeset = GridBlockChangesetPB::update(&editor.block_id, vec![row_pb]);
@@ -164,6 +165,7 @@ impl GridBlockManager {
         let insert_row = InsertedRowPB {
             index: Some(to as i32),
             row: make_row_from_row_rev(row_rev),
+            is_new: false,
         };
 
         let notified_changeset = GridBlockChangesetPB {

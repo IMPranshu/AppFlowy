@@ -1,7 +1,8 @@
 use crate::client_document::InsertExt;
+use lib_ot::core::Attributes;
 use lib_ot::{
-    core::{Attributes, DeltaBuilder, DeltaIterator, NEW_LINE},
-    rich_text::{RichTextAttributeKey, RichTextAttributes, RichTextDelta},
+    core::{OperationAttributes, OperationBuilder, OperationIterator, NEW_LINE},
+    text_delta::{BuildInTextAttributeKey, TextDelta},
 };
 
 pub struct DefaultInsertAttribute {}
@@ -10,9 +11,9 @@ impl InsertExt for DefaultInsertAttribute {
         "DefaultInsertAttribute"
     }
 
-    fn apply(&self, delta: &RichTextDelta, replace_len: usize, text: &str, index: usize) -> Option<RichTextDelta> {
-        let iter = DeltaIterator::new(delta);
-        let mut attributes = RichTextAttributes::new();
+    fn apply(&self, delta: &TextDelta, replace_len: usize, text: &str, index: usize) -> Option<TextDelta> {
+        let iter = OperationIterator::new(delta);
+        let mut attributes = Attributes::new();
 
         // Enable each line split by "\n" remains the block attributes. for example:
         // insert "\n" to "123456" at index 3
@@ -23,7 +24,10 @@ impl InsertExt for DefaultInsertAttribute {
             match iter.last() {
                 None => {}
                 Some(op) => {
-                    if op.get_attributes().contains_key(&RichTextAttributeKey::Header) {
+                    if op
+                        .get_attributes()
+                        .contains_key(BuildInTextAttributeKey::Header.as_ref())
+                    {
                         attributes.extend_other(op.get_attributes());
                     }
                 }
@@ -31,7 +35,7 @@ impl InsertExt for DefaultInsertAttribute {
         }
 
         Some(
-            DeltaBuilder::new()
+            OperationBuilder::new()
                 .retain(index + replace_len)
                 .insert_with_attributes(text, attributes)
                 .build(),

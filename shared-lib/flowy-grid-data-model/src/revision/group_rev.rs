@@ -4,9 +4,8 @@ use serde_json::Error;
 use serde_repr::*;
 
 pub trait GroupConfigurationContentSerde: Sized + Send + Sync {
-    fn from_configuration_content(s: &str) -> Result<Self, serde_json::Error>;
-
-    fn to_configuration_content(&self) -> Result<String, serde_json::Error>;
+    fn from_json(s: &str) -> Result<Self, serde_json::Error>;
+    fn to_json(&self) -> Result<String, serde_json::Error>;
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -14,7 +13,8 @@ pub struct GroupConfigurationRevision {
     pub id: String,
     pub field_id: String,
     pub field_type_rev: FieldTypeRevision,
-    pub groups: Vec<GroupRecordRevision>,
+    pub groups: Vec<GroupRevision>,
+    // This content is serde in Json format
     pub content: String,
 }
 
@@ -23,7 +23,7 @@ impl GroupConfigurationRevision {
     where
         T: GroupConfigurationContentSerde,
     {
-        let content = content.to_configuration_content()?;
+        let content = content.to_json()?;
         Ok(Self {
             id: gen_grid_group_id(),
             field_id,
@@ -40,10 +40,10 @@ pub struct TextGroupConfigurationRevision {
 }
 
 impl GroupConfigurationContentSerde for TextGroupConfigurationRevision {
-    fn from_configuration_content(s: &str) -> Result<Self, Error> {
+    fn from_json(s: &str) -> Result<Self, Error> {
         serde_json::from_str(s)
     }
-    fn to_configuration_content(&self) -> Result<String, Error> {
+    fn to_json(&self) -> Result<String, Error> {
         serde_json::to_string(self)
     }
 }
@@ -54,10 +54,10 @@ pub struct NumberGroupConfigurationRevision {
 }
 
 impl GroupConfigurationContentSerde for NumberGroupConfigurationRevision {
-    fn from_configuration_content(s: &str) -> Result<Self, Error> {
+    fn from_json(s: &str) -> Result<Self, Error> {
         serde_json::from_str(s)
     }
-    fn to_configuration_content(&self) -> Result<String, Error> {
+    fn to_json(&self) -> Result<String, Error> {
         serde_json::to_string(self)
     }
 }
@@ -68,10 +68,10 @@ pub struct UrlGroupConfigurationRevision {
 }
 
 impl GroupConfigurationContentSerde for UrlGroupConfigurationRevision {
-    fn from_configuration_content(s: &str) -> Result<Self, Error> {
+    fn from_json(s: &str) -> Result<Self, Error> {
         serde_json::from_str(s)
     }
-    fn to_configuration_content(&self) -> Result<String, Error> {
+    fn to_json(&self) -> Result<String, Error> {
         serde_json::to_string(self)
     }
 }
@@ -82,11 +82,11 @@ pub struct CheckboxGroupConfigurationRevision {
 }
 
 impl GroupConfigurationContentSerde for CheckboxGroupConfigurationRevision {
-    fn from_configuration_content(s: &str) -> Result<Self, Error> {
+    fn from_json(s: &str) -> Result<Self, Error> {
         serde_json::from_str(s)
     }
 
-    fn to_configuration_content(&self) -> Result<String, Error> {
+    fn to_json(&self) -> Result<String, Error> {
         serde_json::to_string(self)
     }
 }
@@ -97,35 +97,39 @@ pub struct SelectOptionGroupConfigurationRevision {
 }
 
 impl GroupConfigurationContentSerde for SelectOptionGroupConfigurationRevision {
-    fn from_configuration_content(s: &str) -> Result<Self, Error> {
+    fn from_json(s: &str) -> Result<Self, Error> {
         serde_json::from_str(s)
     }
 
-    fn to_configuration_content(&self) -> Result<String, Error> {
+    fn to_json(&self) -> Result<String, Error> {
         serde_json::to_string(self)
     }
 }
 
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
-pub struct GroupRecordRevision {
-    pub group_id: String,
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct GroupRevision {
+    pub id: String,
 
     #[serde(default)]
     pub name: String,
 
-    #[serde(default = "DEFAULT_GROUP_RECORD_VISIBILITY")]
+    #[serde(default = "GROUP_REV_VISIBILITY")]
     pub visible: bool,
 }
 
-const DEFAULT_GROUP_RECORD_VISIBILITY: fn() -> bool = || true;
+const GROUP_REV_VISIBILITY: fn() -> bool = || true;
 
-impl GroupRecordRevision {
-    pub fn new(group_id: String, group_name: String) -> Self {
+impl GroupRevision {
+    pub fn new(id: String, group_name: String) -> Self {
         Self {
-            group_id,
+            id,
             name: group_name,
             visible: true,
         }
+    }
+
+    pub fn update_with_other(&mut self, other: &GroupRevision) {
+        self.visible = other.visible
     }
 }
 
@@ -136,10 +140,10 @@ pub struct DateGroupConfigurationRevision {
 }
 
 impl GroupConfigurationContentSerde for DateGroupConfigurationRevision {
-    fn from_configuration_content(s: &str) -> Result<Self, Error> {
+    fn from_json(s: &str) -> Result<Self, Error> {
         serde_json::from_str(s)
     }
-    fn to_configuration_content(&self) -> Result<String, Error> {
+    fn to_json(&self) -> Result<String, Error> {
         serde_json::to_string(self)
     }
 }
